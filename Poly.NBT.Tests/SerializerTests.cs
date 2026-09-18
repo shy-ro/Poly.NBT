@@ -1,0 +1,187 @@
+using Poly.NBT.Dom;
+using PolyType;
+
+namespace Poly.NBT.Tests;
+
+public sealed class SerializerTests
+{
+    [Fact]
+    public void JavaCompoundHasExpectedBytes()
+    {
+        NbtSerializer serializer = NbtSerializer.Create(NbtOptions.JavaEdition);
+        byte[] actual = serializer.SerializeUsingReflection(new Player(20, "Alex"), "");
+        byte[] expected =
+        [
+            10,
+            3, 0, 6, (byte)'H', (byte)'e', (byte)'a', (byte)'l', (byte)'t', (byte)'h', 0, 0, 0, 20,
+            8, 0, 4, (byte)'N', (byte)'a', (byte)'m', (byte)'e', 0, 4, (byte)'A', (byte)'l', (byte)'e', (byte)'x',
+            0,
+        ];
+
+        Assert.Equal(expected, actual);
+    }
+
+    [Fact]
+    public void JavaObjectRoundTrips()
+    {
+        NbtSerializer serializer = NbtSerializer.Create(NbtOptions.JavaEdition);
+        byte[] bytes = serializer.SerializeUsingReflection(new Player(20, "Alex"), "root");
+
+        Assert.Equal(new Player(20, "Alex"), serializer.DeserializeUsingReflection<Player>(bytes));
+    }
+
+    [Fact]
+    public void BedrockNetworkUsesZigZagVarInt()
+    {
+        NbtSerializer serializer = NbtSerializer.Create(NbtOptions.BedrockNetworkEdition);
+        byte[] bytes = serializer.SerializeUsingReflection(300, "ignored");
+
+        Assert.Equal(new byte[] { 3, 0xd8, 0x04 }, bytes);
+        Assert.Equal(300, serializer.DeserializeUsingReflection<int>(bytes));
+    }
+
+    [Fact]
+    public void DomNestedRoundTrips()
+    {
+        NbtElement value = new NbtCompound(
+            new KeyValuePair<string, NbtElement>("name", new NbtString("world")),
+            new KeyValuePair<string, NbtElement>("position", new NbtList(new NbtInt(1), new NbtInt(2), new NbtInt(3))));
+        NbtSerializer serializer = NbtSerializer.Create(NbtOptions.JavaEdition);
+        using var stream = new MemoryStream();
+
+        serializer.Serialize<NbtElement>(stream, value, "");
+        stream.Position = 0;
+
+        Assert.Equal(value, serializer.Deserialize<NbtElement>(stream, rootNameOmitted: true));
+    }
+
+    [Fact]
+    public void EmptyListUsesEndElementType()
+    {
+        NbtSerializer serializer = NbtSerializer.Create(NbtOptions.JavaNetworkEdition);
+        using var stream = new MemoryStream();
+
+        serializer.Serialize<NbtElement>(stream, new NbtList(), "");
+
+        Assert.Equal(new byte[] { 9, 0, 0, 0, 0, 0 }, stream.ToArray());
+    }
+
+    [Fact]
+    public void RuntimeObjectListAcceptsDifferentCompoundShapes()
+    {
+        var value = new List<object> { new Position(1), new Named("two") };
+        NbtSerializer serializer = NbtSerializer.Create(NbtOptions.JavaNetworkEdition);
+        byte[] bytes = serializer.SerializeUsingReflection(value, "");
+
+        Assert.Equal(NbtTagType.List, (NbtTagType)bytes[0]);
+        Assert.Equal(NbtTagType.Compound, (NbtTagType)bytes[1]);
+        List<object> result = Assert.IsType<List<object>>(serializer.DeserializeUsingReflection<List<object>>(bytes));
+        Assert.All(result, item => Assert.IsType<NbtCompound>(item));
+    }
+
+    [Fact]
+    public void ArraysUseSpecializedTags()
+    {
+        NbtSerializer serializer = NbtSerializer.Create(NbtOptions.JavaNetworkEdition);
+
+        Assert.Equal(NbtTagType.ByteArray, TagOf(serializer.SerializeUsingReflection(new byte[] { 1 })));
+        Assert.Equal(NbtTagType.ByteArray, TagOf(serializer.SerializeUsingReflection(new sbyte[] { -1 })));
+        Assert.Equal(NbtTagType.IntArray, TagOf(serializer.SerializeUsingReflection(new[] { 1 })));
+        Assert.Equal(NbtTagType.LongArray, TagOf(serializer.SerializeUsingReflection(new[] { 1L })));
+        Assert.Equal(NbtTagType.List, TagOf(serializer.SerializeUsingReflection(new[] { 1f })));
+        Assert.Equal(NbtTagType.List, TagOf(serializer.SerializeUsingReflection(new[] { 1d })));
+    }
+
+    [Fact]
+    public void PresetsHaveExpectedWireOptions()
+    {
+        Assert.Equal(NbtEndianness.BigEndian, NbtOptions.JavaEdition.Endianness);
+        Assert.Equal(NbtRootTagNaming.Omitted, NbtOptions.JavaNetworkEdition.RootTagNaming);
+        Assert.Equal(NbtEndianness.LittleEndian, NbtOptions.BedrockEdition.Endianness);
+        Assert.Equal(NbtNumericEncoding.VarIntZigZag, NbtOptions.BedrockNetworkEdition.NumericEncoding);
+    }
+
+    [Fact]
+    public void JavaAndBedrockUseTheirExpectedStringEncodings()
+    {
+        const string value = "A\0\U0001f600";
+        NbtSerializer javaSerializer = NbtSerializer.Create(NbtOptions.JavaNetworkEdition);
+        byte[] java = javaSerializer.SerializeUsingReflection(value);
+        Assert.Equal(new byte[] { 8, 0, 9, 0x41, 0xc0, 0x80, 0xed, 0xa0, 0xbd, 0xed, 0xb8, 0x80 }, java);
+        Assert.Equal(value, javaSerializer.DeserializeUsingReflection<string>(java));
+
+        NbtSerializer bedrockSerializer = NbtSerializer.Create(NbtOptions.BedrockEdition with { RootTagNaming = NbtRootTagNaming.Omitted });
+        Assert.Equal(new byte[] { 8, 6, 0, 0x41, 0, 0xf0, 0x9f, 0x98, 0x80 }, bedrockSerializer.SerializeUsingReflection(value));
+    }
+
+    [Fact]
+    public void BedrockNetworkFloatRemainsFixedWidth()
+    {
+        byte[] bytes = NbtSerializer.Create(NbtOptions.BedrockNetworkEdition).SerializeUsingReflection(1f);
+        Assert.Equal(new byte[] { 5, 0, 0, 0x80, 0x3f }, bytes);
+    }
+
+    [Fact]
+    public void NestedListsMayHaveDifferentInnerElementTypes()
+    {
+        NbtElement value = new NbtList(
+            new NbtList(new NbtInt(1)),
+            new NbtList(new NbtString("one")));
+        NbtSerializer serializer = NbtSerializer.Create(NbtOptions.JavaNetworkEdition);
+        using var stream = new MemoryStream();
+
+        serializer.Serialize<NbtElement>(stream, value, "");
+        stream.Position = 0;
+
+        Assert.Equal(value, serializer.Deserialize<NbtElement>(stream));
+    }
+
+    [Fact]
+    public void OptionalPropertyIsAbsentOrPresent()
+    {
+        NbtSerializer serializer = NbtSerializer.Create(NbtOptions.JavaNetworkEdition);
+        byte[] absent = serializer.SerializeUsingReflection(new OptionalModel());
+        Assert.Equal(new byte[] { 10, 0 }, absent);
+        Assert.Null(serializer.DeserializeUsingReflection<OptionalModel>(absent)!.Value);
+
+        byte[] present = serializer.SerializeUsingReflection(new OptionalModel { Value = 42 });
+        Assert.Equal(42, serializer.DeserializeUsingReflection<OptionalModel>(present)!.Value);
+    }
+
+    [Fact]
+    public void StringDictionaryUsesCompound()
+    {
+        var value = new Dictionary<string, int> { ["answer"] = 42 };
+        NbtSerializer serializer = NbtSerializer.Create(NbtOptions.JavaNetworkEdition);
+        byte[] bytes = serializer.SerializeUsingReflection(value);
+
+        Dictionary<string, int> result = Assert.IsType<Dictionary<string, int>>(serializer.DeserializeUsingReflection<Dictionary<string, int>>(bytes));
+        Assert.Equal(42, result["answer"]);
+    }
+
+    [Fact]
+    public void SourceGeneratedModelRoundTrips()
+    {
+        NbtSerializer serializer = NbtSerializer.Create(NbtOptions.JavaNetworkEdition);
+        using var stream = new MemoryStream();
+
+        serializer.Serialize(stream, new SourcePlayer(7), "");
+        stream.Position = 0;
+
+        Assert.Equal(new SourcePlayer(7), serializer.Deserialize<SourcePlayer>(stream));
+    }
+
+    private static NbtTagType TagOf(byte[] bytes) => (NbtTagType)bytes[0];
+}
+
+public sealed record Player(int Health, string Name);
+public sealed record Position(int X);
+public sealed record Named(string Name);
+
+public sealed class OptionalModel
+{
+    public int? Value { get; set; }
+}
+
+[GenerateShape]
+public sealed partial record SourcePlayer(int Score);

@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="Poly.NBT/Poly.NBT.csproj" />
+  <Project Path="Poly.NBT.Tests/Poly.NBT.Tests.csproj" />
+</Solution>

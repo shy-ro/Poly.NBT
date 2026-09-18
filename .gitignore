@@ -1,0 +1,12 @@
+bin/
+obj/
+/packages/
+riderModule.iml
+/_ReSharper.Caches/
+.dotnet-home/
+.packages/
+.idea/
+PolyType/
+fNbt/
+AGENTS.md
+AGENTS.md.txt
