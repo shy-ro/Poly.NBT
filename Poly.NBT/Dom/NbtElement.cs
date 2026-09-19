@@ -54,7 +54,7 @@ public sealed record NbtList : NbtElement, IReadOnlyList<NbtElement>
     private readonly IReadOnlyList<NbtElement> _items;
 
     public NbtList(IEnumerable<NbtElement> items) => _items = items?.ToArray() ?? throw new ArgumentNullException(nameof(items));
-    public NbtList(params NbtElement[] items) : this((IEnumerable<NbtElement>)items) { }
+    public NbtList(params ReadOnlySpan<NbtElement> items) => _items = items.ToArray();
     public int Count => _items.Count;
     public NbtElement this[int index] => _items[index];
     public IEnumerator<NbtElement> GetEnumerator() => _items.GetEnumerator();
@@ -75,7 +75,8 @@ public sealed record NbtCompound : NbtElement, IReadOnlyDictionary<string, NbtEl
     public NbtCompound(IEnumerable<KeyValuePair<string, NbtElement>> entries)
         => _entries = entries?.ToDictionary(StringComparer.Ordinal) ?? throw new ArgumentNullException(nameof(entries));
 
-    public NbtCompound(params KeyValuePair<string, NbtElement>[] entries) : this((IEnumerable<KeyValuePair<string, NbtElement>>)entries) { }
+    public NbtCompound(params ReadOnlySpan<KeyValuePair<string, NbtElement>> entries)
+        => _entries = entries.ToArray().ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
     public int Count => _entries.Count;
     public IEnumerable<string> Keys => _entries.Keys;
     public IEnumerable<NbtElement> Values => _entries.Values;
