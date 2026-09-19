@@ -60,7 +60,12 @@ public sealed record NbtList : NbtElement, IReadOnlyList<NbtElement>
     public IEnumerator<NbtElement> GetEnumerator() => _items.GetEnumerator();
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
     public bool Equals(NbtList? other) => other is not null && this.SequenceEqual(other);
-    public override int GetHashCode() => this.Aggregate(new HashCode(), (hash, value) => { hash.Add(value); return hash; }).ToHashCode();
+    public override int GetHashCode()
+    {
+        var hash = new HashCode();
+        foreach (NbtElement item in _items) hash.Add(item);
+        return hash.ToHashCode();
+    }
 }
 
 public sealed record NbtCompound : NbtElement, IReadOnlyDictionary<string, NbtElement>
