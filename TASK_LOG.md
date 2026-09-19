@@ -1,5 +1,31 @@
 # Task Log
 
+## 2026-09-19 - Document the new public API contracts
+
+### Scope
+
+Update the README for explicit root names, enum mapping, DOM array helpers, and root-aware documents.
+
+### Actual Changes
+
+- Added explicit-root examples for shape-based and reflection serialization.
+- Documented enum-to-NBT integer tag mapping, including unsigned bit preservation.
+- Added `NbtDocument` and `NbtList.TryToArray` examples and behavior notes.
+- Removed completed enum and DOM convenience items from future-facing text while retaining the unsupported Union note.
+
+### Verification
+
+- `dotnet build Poly.NBT.slnx --no-restore`: passed with 0 warnings and 0 errors.
+- `dotnet test Poly.NBT.slnx --no-build --no-restore`: passed, 58/58 tests.
+- `dotnet format Poly.NBT.slnx --no-restore --verify-no-changes --severity warn`: passed.
+- `git diff --check`: passed.
+
+### Known Issues and Next
+
+- The pre-existing `Poly.NBT.slnx` modification remains outside this task commit and prevents a literally clean worktree.
+
+Planned commit subject: `Document enum mapping, NbtDocument, DOM helpers, and explicit root names`
+
 ## 2026-09-19 - Add root-aware NbtDocument APIs
 
 ### Scope
