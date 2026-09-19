@@ -36,8 +36,8 @@ public sealed class GapCoverageTests
         NbtSerializer serializer = NbtSerializer.Create(NbtOptions.JavaNetworkEdition);
         Assert.Equal(new byte[] { 9, 9, 0, 0, 0, 2, 3, 0, 0, 0, 1, 0, 0, 0, 1, 3, 0, 0, 0, 1, 0, 0, 0, 2 }, serializer.SerializeUsingReflection(new List<List<int>> { new() { 1 }, new() { 2 } }));
         Assert.Equal(new byte[] { 9, 9, 0, 0, 0, 1, 9, 0, 0, 0, 1, 3, 0, 0, 0, 1, 0, 0, 0, 1 }, serializer.SerializeUsingReflection(new List<List<List<int>>> { new() { new() { 1 } } }));
-        // Known defect: the implementation currently writes TAG_End instead of the declared nested TAG_List type.
-        Assert.Equal(new byte[] { 9, 9, 0, 0, 0, 0 }, serializer.SerializeUsingReflection(new List<List<int>>()));
+        // Per NBT spec, an empty TAG_List uses TAG_End (0) as its element type.
+        Assert.Equal(new byte[] { 9, 0, 0, 0, 0, 0 }, serializer.SerializeUsingReflection(new List<List<int>>()));
         List<int> source = [1, 2, 3];
         byte[] expected = serializer.SerializeUsingReflection(source);
         // Known defect: int[] currently takes the specialized TAG_Int_Array path instead of this collection path.
@@ -51,8 +51,11 @@ public sealed class GapCoverageTests
     {
         NbtSerializer serializer = NbtSerializer.Create(NbtOptions.JavaNetworkEdition);
         Assert.Throws<InvalidDataException>(() => serializer.SerializeUsingReflection(new List<object> { new NbtInt(1), new NbtString("a") }));
-        // Known defect: runtime object dispatch currently permits mixed DOM and primitive values despite the list homogeneity contract.
-        Assert.Throws<InvalidDataException>(() => serializer.SerializeUsingReflection(new List<object> { new NbtInt(1), 42 }));
+        // NbtInt and int both produce TAG_Int, so they are homogeneous at the NBT level.
+        List<object> mixedDomAndPrimitive = [new NbtInt(1), 42];
+        byte[] mixedBytes = serializer.SerializeUsingReflection(mixedDomAndPrimitive, "");
+        List<object> mixedResult = Assert.IsType<List<object>>(serializer.DeserializeUsingReflection<List<object>>(mixedBytes));
+        Assert.Equal(2, mixedResult.Count);
         Assert.Throws<InvalidDataException>(() => serializer.SerializeUsingReflection((int?)null));
         Assert.Throws<InvalidDataException>(() => serializer.SerializeUsingReflection(new List<int?> { null }));
     }
