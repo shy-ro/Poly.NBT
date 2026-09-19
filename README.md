@@ -2,66 +2,117 @@
 
 PolyType-based, Native AOT-friendly serialization for the Java and Bedrock NBT wire formats.
 
-The serializer is configured once and can be shared by concurrent callers:
+## Implemented / Planned
+
+| Area | Implemented | Planned |
+|:---|:---|:---|
+| Configuration | `NbtOptions` with `Endianness`, `StringEncoding`, `NumericEncoding`, `RootTagNaming`, `SupportsLongArray`, `OptimizePrimitiveListsToArrays` | — |
+| Presets | `JavaEdition`, `JavaNetworkEdition`, `BedrockEdition`, `BedrockNetworkEdition` | — |
+| Encoding | Big/little endian numbers, ZigZag VarInt, Modified UTF-8, strict UTF-8, UTF-8 with escapes, fixed and VarInt length prefixes | — |
+| Converters | Primitives, arrays, collections, dictionaries, objects, `Nullable<T>`, surrogates, enums, DOM, `object` | — |
+| DOM | `NbtElement` and 12 tag types, `NbtList.TryToArray`, `NbtDocument` | `ToElement` / `FromElement` bridge |
+| API | `Serialize`, `Deserialize`, `SerializeUsingReflection`, `DeserializeUsingReflection`, `DeserializeDocument` | Async API |
+| Polymorphism | — | Union and derived-type serialization |
+| BCL types | — | Built-in marshalers for `decimal`, `Guid`, `DateTime`, `DateTimeOffset` |
+
+## Usage
+
+### Basic
 
 ```csharp
 NbtSerializer serializer = NbtSerializer.Create(NbtOptions.JavaEdition);
-serializer.Serialize(stream, value, "root", MyModel.GetTypeShape());
+
+byte[] bytes = serializer.Serialize(value, "root", MyModel.GetTypeShape());
+MyModel? restored = serializer.Deserialize<MyModel>(bytes);
 ```
 
-Serialization convenience overloads also require an explicit root name:
+With `[GenerateShape]` on `MyModel`:
 
 ```csharp
-byte[] data = serializer.SerializeUsingReflection(value, "root");
+NbtSerializer serializer = NbtSerializer.Create(NbtOptions.JavaEdition);
+
+serializer.Serialize(stream, value, "root");
+MyModel? restored = serializer.Deserialize<MyModel>(stream);
 ```
 
-Passing an empty root name omits both the name length and name bytes. On reading that form with a named-root preset, pass `rootNameOmitted: true`. The Java and Bedrock network presets always omit the root name regardless of the supplied value.
-
-## DOM documents and lists
-
-`NbtDocument` keeps a root tag name and root element together. Document deserialization preserves names that are present on the wire; formats that omit the root name return `string.Empty`.
+### Configuration
 
 ```csharp
-var document = new NbtDocument("level", new NbtInt(42));
-byte[] data = serializer.Serialize(document);
-NbtDocument decoded = serializer.DeserializeDocument(data);
+NbtSerializer java = NbtSerializer.Create(NbtOptions.JavaEdition);
+NbtSerializer custom = NbtSerializer.Create(NbtOptions.JavaEdition with { SupportsLongArray = false });
+NbtSerializer bedrock = NbtSerializer.Create(NbtOptions.BedrockNetworkEdition);
 ```
 
-A homogeneous scalar `NbtList` can be converted without manually inspecting every element:
+### Root name
 
 ```csharp
-var list = new NbtList(new NbtInt(1), new NbtInt(2));
+// Write with a root name
+serializer.Serialize(stream, value, "level", shape);
+
+// Write without a root name
+serializer.Serialize(stream, value, "", shape);
+
+// Read a stream that omitted the root name
+MyModel? restored = serializer.Deserialize(stream, shape, rootNameOmitted: true);
+```
+
+### Document
+
+```csharp
+NbtDocument doc = serializer.DeserializeDocument(bytes);
+NbtElement root = doc.RootElement;
+string name = doc.RootTagName;
+```
+
+### DOM helpers
+
+```csharp
+NbtList list = new(new NbtInt(1), new NbtInt(2), new NbtInt(3));
 if (list.TryToArray(out int[]? values))
 {
-    // values is [1, 2]
+    // values is [1, 2, 3]
 }
 ```
 
-`TryToArray` overloads are available for `byte[]`, `sbyte[]`, `short[]`, `int[]`, `long[]`, `float[]`, `double[]`, and `string[]`. A mismatched element tag returns `false`; an empty list converts successfully to any explicitly selected target type.
+Overloads: `byte[]`, `sbyte[]`, `short[]`, `int[]`, `long[]`, `float[]`, `double[]`, `string[]`.
 
-## Wire-format decisions
+### PolyType attributes
 
-- Java fixed-width numbers use big endian; Bedrock fixed-width numbers use little endian.
-- Bedrock network `TAG_Int` and `TAG_Long` use ZigZag VarInt/VarLong. Floating-point tags remain fixed-width IEEE 754 values in little-endian byte order.
-- Java strings use Java Modified UTF-8. Bedrock strings use tolerant UTF-8 with ESC x HH raw-byte escapes.
+```csharp
+[GenerateShape]
+public partial record Player(int Health, string Name);
 
-When deserializing into `object`, scalar tags are unpacked to their CLR primitive values; list and compound tags remain `NbtList` and `NbtCompound`.
+[GenerateShape]
+public partial class Entity
+{
+    [PropertyShape(Name = "id")]
+    public int Identifier { get; set; }
 
-Enums use the integer NBT tag matching the width of their CLR underlying type:
+    [PropertyShape(Ignore = true)]
+    public string CacheKey { get; set; } = "";
+}
 
-- `byte` and `sbyte` use `TAG_Byte`.
-- `short` and `ushort` use `TAG_Short`.
-- `int` and `uint` use `TAG_Int`.
-- `long` and `ulong` use `TAG_Long`.
-- Unsigned underlying values preserve their bit pattern in the corresponding signed NBT payload.
-- Fixed-width string lengths are unsigned 16-bit values. Network string lengths are unsigned VarInts; network collection lengths are signed ZigZag VarInts.
-- Empty lists are emitted with `TAG_End` as their element type.
-- Unions require a PolyType surrogate until their NBT representation is selected by the application.
+[GenerateShape]
+[TypeShape(Marshaler = typeof(PointMarshaler))]
+public readonly partial record struct Point(int X, int Y);
+```
 
-Run the dependency-free microbenchmarks with `dotnet run --project benchmarks/Poly.NBT.Benchmarks/Poly.NBT.Benchmarks.csproj -c Release`.
+See the [PolyType documentation](https://github.com/eiriktsarpalis/PolyType) for the full attribute surface.
 
-The format behavior follows the [NBT format specification](https://minecraft.wiki/w/NBT_format), the [Bedrock protocol data types](https://minecraft.wiki/w/Bedrock_Edition_protocol#Data_types), and the [Java protocol NBT change](https://minecraft.wiki/w/Java_Edition_protocol/Packets#NBT) introduced in 1.20.2. The visitor and recursive converter cache follow PolyType's [CborSerializer example](https://github.com/eiriktsarpalis/PolyType/tree/v1.3.1/src/PolyType.Examples/CborSerializer).
+## Limitations
+
+- **`Utf8WithEscapes` literal escape ambiguity.** If a string contains the literal sequence `ESC x HH` (a `U+001B` character followed by `x` and two hex digits), the encoded form loses the `x` and hex digits on round-trip. This is a rare boundary; the fix would significantly increase complexity and is not planned.
+- **Asymmetric `long[]` deserialization.** When `OptimizePrimitiveListsToArrays` is `false`, `long[]` and `List<long>` still read `TAG_Long_Array` input. Deserialization is driven by the actual tag on the wire and is not constrained by the serializer's output configuration.
+
+## Requirements
+
+- **Root values cannot be `null`.** `Serialize` throws `InvalidDataException` if the root value is absent.
+- **List elements cannot be `null`.** NBT has no null representation. `null` elements throw `InvalidDataException` at write time, regardless of whether `OptimizePrimitiveListsToArrays` is enabled.
+- **Dictionary keys must be `string`.** Any other key type throws `NotSupportedException` during converter construction.
+- **Enums map to the smallest integer tag for their underlying type.** `byte`/`sbyte` → `TAG_Byte`, `short`/`ushort` → `TAG_Short`, `int`/`uint` → `TAG_Int`, `long`/`ulong` → `TAG_Long`. No string-based names are emitted.
+- **`NbtSerializer.Create` requires explicit options.** There is no parameterless overload.
+- **AOT compatibility.** The library is marked `IsAotCompatible`. The reflection-based `SerializeUsingReflection` / `DeserializeUsingReflection` methods require dynamic code and are annotated `[RequiresUnreferencedCode]` / `[RequiresDynamicCode]`.
 
 ## Acknowledgements
 
-The implementation and compatibility tests also reference [fNbt](https://github.com/mstefarov/fNbt). The uncompressed `test.nbt` and `bigtest.nbt` fixtures in `Poly.NBT.Tests/TestFiles` originate from fNbt, and several edge-case scenarios were independently rewritten from its test suite. The fixtures retain fNbt's BSD-3-Clause license in `Poly.NBT.Tests/TestFiles/fNbt-LICENSE.txt`.
+The fixtures `test.nbt` and `bigtest.nbt` in `Poly.NBT.Tests/TestFiles` originate from [fNbt](https://github.com/mstefarov/fNbt) and are retained under BSD-3-Clause in `Poly.NBT.Tests/TestFiles/fNbt-LICENSE.txt`.
