@@ -12,10 +12,9 @@ internal static class StreamIO
         return buffer;
     }
 
-    public static void Write<T>(Stream stream, T value, SpanWriter<T> writer)
+    public static unsafe void Write<T>(Stream stream, T value, SpanWriter<T> writer) where T : unmanaged
     {
-        int size = typeof(T) == typeof(short) ? 2 : typeof(T) == typeof(int) ? 4 : 8;
-        Span<byte> buffer = stackalloc byte[size];
+        Span<byte> buffer = stackalloc byte[sizeof(T)];
         writer(buffer, value);
         stream.Write(buffer);
     }
