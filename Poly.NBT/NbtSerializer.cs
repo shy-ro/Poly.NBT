@@ -92,7 +92,7 @@ public sealed partial class NbtSerializer
         return result;
     }
 
-    public void Serialize<T>(Stream destination, T? value, string rootTagName = "root") where T : IShapeable<T>
+    public void Serialize<T>(Stream destination, T? value, string rootTagName) where T : IShapeable<T>
         => Serialize(destination, value, rootTagName, T.GetTypeShape());
 
     public T? Deserialize<T>(Stream source, bool rootNameOmitted = false) where T : IShapeable<T>
@@ -100,7 +100,7 @@ public sealed partial class NbtSerializer
 
     [RequiresUnreferencedCode("The PolyType reflection provider requires unreferenced code.")]
     [RequiresDynamicCode("The PolyType reflection provider requires dynamic code.")]
-    public byte[] SerializeUsingReflection<T>(T? value, string rootTagName = "root")
+    public byte[] SerializeUsingReflection<T>(T? value, string rootTagName)
         => Serialize(value, rootTagName, ReflectionTypeShapeProvider.Default.GetTypeShape<T>());
 
     [RequiresUnreferencedCode("The PolyType reflection provider requires unreferenced code.")]

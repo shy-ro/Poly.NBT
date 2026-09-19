@@ -84,12 +84,12 @@ public sealed class SerializerTests
     {
         NbtSerializer serializer = NbtSerializer.Create(NbtOptions.JavaNetworkEdition);
 
-        Assert.Equal(NbtTagType.ByteArray, TagOf(serializer.SerializeUsingReflection(new byte[] { 1 })));
-        Assert.Equal(NbtTagType.ByteArray, TagOf(serializer.SerializeUsingReflection(new sbyte[] { -1 })));
-        Assert.Equal(NbtTagType.IntArray, TagOf(serializer.SerializeUsingReflection(new[] { 1 })));
-        Assert.Equal(NbtTagType.LongArray, TagOf(serializer.SerializeUsingReflection(new[] { 1L })));
-        Assert.Equal(NbtTagType.List, TagOf(serializer.SerializeUsingReflection(new[] { 1f })));
-        Assert.Equal(NbtTagType.List, TagOf(serializer.SerializeUsingReflection(new[] { 1d })));
+        Assert.Equal(NbtTagType.ByteArray, TagOf(serializer.SerializeUsingReflection(new byte[] { 1 }, "")));
+        Assert.Equal(NbtTagType.ByteArray, TagOf(serializer.SerializeUsingReflection(new sbyte[] { -1 }, "")));
+        Assert.Equal(NbtTagType.IntArray, TagOf(serializer.SerializeUsingReflection(new[] { 1 }, "")));
+        Assert.Equal(NbtTagType.LongArray, TagOf(serializer.SerializeUsingReflection(new[] { 1L }, "")));
+        Assert.Equal(NbtTagType.List, TagOf(serializer.SerializeUsingReflection(new[] { 1f }, "")));
+        Assert.Equal(NbtTagType.List, TagOf(serializer.SerializeUsingReflection(new[] { 1d }, "")));
     }
 
     [Fact]
@@ -106,18 +106,18 @@ public sealed class SerializerTests
     {
         const string value = "A\0\U0001f600";
         NbtSerializer javaSerializer = NbtSerializer.Create(NbtOptions.JavaNetworkEdition);
-        byte[] java = javaSerializer.SerializeUsingReflection(value);
+        byte[] java = javaSerializer.SerializeUsingReflection(value, "");
         Assert.Equal(new byte[] { 8, 0, 9, 0x41, 0xc0, 0x80, 0xed, 0xa0, 0xbd, 0xed, 0xb8, 0x80 }, java);
         Assert.Equal(value, javaSerializer.DeserializeUsingReflection<string>(java));
 
         NbtSerializer bedrockSerializer = NbtSerializer.Create(NbtOptions.BedrockEdition with { RootTagNaming = NbtRootTagNaming.Omitted });
-        Assert.Equal(new byte[] { 8, 6, 0, 0x41, 0, 0xf0, 0x9f, 0x98, 0x80 }, bedrockSerializer.SerializeUsingReflection(value));
+        Assert.Equal(new byte[] { 8, 6, 0, 0x41, 0, 0xf0, 0x9f, 0x98, 0x80 }, bedrockSerializer.SerializeUsingReflection(value, ""));
     }
 
     [Fact]
     public void BedrockNetworkFloatRemainsFixedWidth()
     {
-        byte[] bytes = NbtSerializer.Create(NbtOptions.BedrockNetworkEdition).SerializeUsingReflection(1f);
+        byte[] bytes = NbtSerializer.Create(NbtOptions.BedrockNetworkEdition).SerializeUsingReflection(1f, "");
         Assert.Equal(new byte[] { 5, 0, 0, 0x80, 0x3f }, bytes);
     }
 
@@ -140,11 +140,11 @@ public sealed class SerializerTests
     public void OptionalPropertyIsAbsentOrPresent()
     {
         NbtSerializer serializer = NbtSerializer.Create(NbtOptions.JavaNetworkEdition);
-        byte[] absent = serializer.SerializeUsingReflection(new OptionalModel());
+        byte[] absent = serializer.SerializeUsingReflection(new OptionalModel(), "");
         Assert.Equal(new byte[] { 10, 0 }, absent);
         Assert.Null(serializer.DeserializeUsingReflection<OptionalModel>(absent)!.Value);
 
-        byte[] present = serializer.SerializeUsingReflection(new OptionalModel { Value = 42 });
+        byte[] present = serializer.SerializeUsingReflection(new OptionalModel { Value = 42 }, "");
         Assert.Equal(42, serializer.DeserializeUsingReflection<OptionalModel>(present)!.Value);
     }
 
@@ -153,7 +153,7 @@ public sealed class SerializerTests
     {
         var value = new Dictionary<string, int> { ["answer"] = 42 };
         NbtSerializer serializer = NbtSerializer.Create(NbtOptions.JavaNetworkEdition);
-        byte[] bytes = serializer.SerializeUsingReflection(value);
+        byte[] bytes = serializer.SerializeUsingReflection(value, "");
 
         Dictionary<string, int> result = Assert.IsType<Dictionary<string, int>>(serializer.DeserializeUsingReflection<Dictionary<string, int>>(bytes));
         Assert.Equal(42, result["answer"]);
@@ -169,6 +169,23 @@ public sealed class SerializerTests
         stream.Position = 0;
 
         Assert.Equal(new SourcePlayer(7), serializer.Deserialize<SourcePlayer>(stream));
+    }
+
+    [Fact]
+    public void ConvenienceSerializationRequiresExplicitRootName()
+    {
+        var methods = typeof(NbtSerializer).GetMethods();
+        var sourceGenerated = Assert.Single(methods, method =>
+            method.Name == nameof(NbtSerializer.Serialize)
+            && method.IsGenericMethodDefinition
+            && method.GetParameters() is [{ ParameterType: var first }, _, _]
+            && first == typeof(Stream));
+        var reflection = Assert.Single(methods, method =>
+            method.Name == nameof(NbtSerializer.SerializeUsingReflection)
+            && method.IsGenericMethodDefinition);
+
+        Assert.False(sourceGenerated.GetParameters()[2].HasDefaultValue);
+        Assert.False(reflection.GetParameters()[1].HasDefaultValue);
     }
 
     private static NbtTagType TagOf(byte[] bytes) => (NbtTagType)bytes[0];

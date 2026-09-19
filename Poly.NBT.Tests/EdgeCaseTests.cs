@@ -20,12 +20,12 @@ public sealed class EdgeCaseTests
 
         foreach (int value in new[] { int.MinValue, -65, -64, -1, 0, 63, 64, 127, 128, 8191, 8192, int.MaxValue })
         {
-            Assert.Equal(value, serializer.DeserializeUsingReflection<int>(serializer.SerializeUsingReflection(value)));
+            Assert.Equal(value, serializer.DeserializeUsingReflection<int>(serializer.SerializeUsingReflection(value, "")));
         }
 
         foreach (long value in new[] { long.MinValue, -1L, 0L, 1L << 56, long.MaxValue })
         {
-            Assert.Equal(value, serializer.DeserializeUsingReflection<long>(serializer.SerializeUsingReflection(value)));
+            Assert.Equal(value, serializer.DeserializeUsingReflection<long>(serializer.SerializeUsingReflection(value, "")));
         }
     }
 
@@ -38,22 +38,22 @@ public sealed class EdgeCaseTests
         NbtSerializer serializer = NbtSerializer.Create(NbtOptions.JavaNetworkEdition);
         string value = new('a', length);
 
-        Assert.Equal(value, serializer.DeserializeUsingReflection<string>(serializer.SerializeUsingReflection(value)));
+        Assert.Equal(value, serializer.DeserializeUsingReflection<string>(serializer.SerializeUsingReflection(value, "")));
     }
 
     [Fact]
     public void FixedWidthStringOver65535BytesThrows()
     {
         NbtSerializer serializer = NbtSerializer.Create(NbtOptions.JavaNetworkEdition);
-        Assert.Throws<InvalidDataException>(() => serializer.SerializeUsingReflection(new string('a', 65536)));
+        Assert.Throws<InvalidDataException>(() => serializer.SerializeUsingReflection(new string('a', 65536), ""));
     }
 
     [Fact]
     public void LongArrayFallsBackToListWhenDialectDoesNotSupportIt()
     {
         NbtSerializer serializer = NbtSerializer.Create(NbtOptions.BedrockEdition with { RootTagNaming = NbtRootTagNaming.Omitted });
-        Assert.Equal(NbtTagType.List, (NbtTagType)serializer.SerializeUsingReflection(new[] { 1L })[0]);
-        byte[] encoded = serializer.SerializeUsingReflection(new[] { 1L });
+        Assert.Equal(NbtTagType.List, (NbtTagType)serializer.SerializeUsingReflection(new[] { 1L }, "")[0]);
+        byte[] encoded = serializer.SerializeUsingReflection(new[] { 1L }, "");
         Assert.Equal(new[] { 1L }, serializer.DeserializeUsingReflection<long[]>(encoded));
     }
 

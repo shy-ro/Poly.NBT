@@ -8,8 +8,8 @@ Dictionary<string, int> dictionary = Enumerable.Range(0, 256).ToDictionary(i => 
 NbtSerializer optimized = NbtSerializer.Create(NbtOptions.JavaNetworkEdition);
 NbtSerializer generic = NbtSerializer.Create(NbtOptions.JavaNetworkEdition with { OptimizePrimitiveListsToArrays = false });
 
-Run("int[] bulk", () => optimized.SerializeUsingReflection(array));
-Run("List<int> generic", () => generic.SerializeUsingReflection(list));
+Run("int[] bulk", () => optimized.SerializeUsingReflection(array, ""));
+Run("List<int> generic", () => generic.SerializeUsingReflection(list, ""));
 Run("Modified UTF-8 ASCII fast", () => EncodeModifiedUtf8Fast(ascii));
 Run("Modified UTF-8 old loop", () => EncodeModifiedUtf8Baseline(ascii));
 Run("dictionary direct", () => Consume(dictionary));

@@ -26,37 +26,37 @@ public sealed class GapCoverageTests
     [Fact]
     public void FloatingArraysUseListTagsAndFixedBits()
     {
-        Assert.Equal(new byte[] { 9, 5, 0, 0, 0, 2, 0x3f, 0x80, 0, 0, 0xbf, 0x80, 0, 0 }, NbtSerializer.Create(NbtOptions.JavaNetworkEdition).SerializeUsingReflection(new[] { 1f, -1f }));
-        Assert.Equal(new byte[] { 9, 6, 2, 0, 0, 0, 0, 0, 0, 0xf0, 0x3f }, NbtSerializer.Create(NbtOptions.BedrockNetworkEdition).SerializeUsingReflection(new[] { 1d }));
+        Assert.Equal(new byte[] { 9, 5, 0, 0, 0, 2, 0x3f, 0x80, 0, 0, 0xbf, 0x80, 0, 0 }, NbtSerializer.Create(NbtOptions.JavaNetworkEdition).SerializeUsingReflection(new[] { 1f, -1f }, ""));
+        Assert.Equal(new byte[] { 9, 6, 2, 0, 0, 0, 0, 0, 0, 0xf0, 0x3f }, NbtSerializer.Create(NbtOptions.BedrockNetworkEdition).SerializeUsingReflection(new[] { 1d }, ""));
     }
 
     [Fact]
     public void NestedListsAndCollectionMaterializationHaveStableBytes()
     {
         NbtSerializer serializer = NbtSerializer.Create(NbtOptions.JavaNetworkEdition);
-        Assert.Equal(new byte[] { 9, 11, 0, 0, 0, 2, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2 }, serializer.SerializeUsingReflection(new List<List<int>> { new() { 1 }, new() { 2 } }));
-        Assert.Equal(new byte[] { 9, 9, 0, 0, 0, 1, 11, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1 }, serializer.SerializeUsingReflection(new List<List<List<int>>> { new() { new() { 1 } } }));
+        Assert.Equal(new byte[] { 9, 11, 0, 0, 0, 2, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2 }, serializer.SerializeUsingReflection(new List<List<int>> { new() { 1 }, new() { 2 } }, ""));
+        Assert.Equal(new byte[] { 9, 9, 0, 0, 0, 1, 11, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1 }, serializer.SerializeUsingReflection(new List<List<List<int>>> { new() { new() { 1 } } }, ""));
         // Per NBT spec, an empty TAG_List uses TAG_End (0) as its element type.
-        Assert.Equal(new byte[] { 9, 0, 0, 0, 0, 0 }, serializer.SerializeUsingReflection(new List<List<int>>()));
+        Assert.Equal(new byte[] { 9, 0, 0, 0, 0, 0 }, serializer.SerializeUsingReflection(new List<List<int>>(), ""));
         List<int> source = [1, 2, 3];
-        byte[] expected = serializer.SerializeUsingReflection(source);
-        Assert.Equal(expected, serializer.SerializeUsingReflection(source.ToArray()));
-        Assert.Equal(expected, serializer.SerializeUsingReflection((ICollection<int>)source));
-        Assert.Equal(expected, serializer.SerializeUsingReflection(Yield(source)));
+        byte[] expected = serializer.SerializeUsingReflection(source, "");
+        Assert.Equal(expected, serializer.SerializeUsingReflection(source.ToArray(), ""));
+        Assert.Equal(expected, serializer.SerializeUsingReflection((ICollection<int>)source, ""));
+        Assert.Equal(expected, serializer.SerializeUsingReflection(Yield(source), ""));
     }
 
     [Fact]
     public void RuntimeObjectAndOptionalBoundariesRejectInvalidValues()
     {
         NbtSerializer serializer = NbtSerializer.Create(NbtOptions.JavaNetworkEdition);
-        Assert.Throws<InvalidDataException>(() => serializer.SerializeUsingReflection(new List<object> { new NbtInt(1), new NbtString("a") }));
+        Assert.Throws<InvalidDataException>(() => serializer.SerializeUsingReflection(new List<object> { new NbtInt(1), new NbtString("a") }, ""));
         // NbtInt and int both produce TAG_Int, so they are homogeneous at the NBT level.
         List<object> mixedDomAndPrimitive = [new NbtInt(1), 42];
         byte[] mixedBytes = serializer.SerializeUsingReflection(mixedDomAndPrimitive, "");
         List<object> mixedResult = Assert.IsType<List<object>>(serializer.DeserializeUsingReflection<List<object>>(mixedBytes));
         Assert.Equal(2, mixedResult.Count);
-        Assert.Throws<InvalidDataException>(() => serializer.SerializeUsingReflection((int?)null));
-        Assert.Throws<InvalidDataException>(() => serializer.SerializeUsingReflection(new List<int?> { null }));
+        Assert.Throws<InvalidDataException>(() => serializer.SerializeUsingReflection((int?)null, ""));
+        Assert.Throws<InvalidDataException>(() => serializer.SerializeUsingReflection(new List<int?> { null }, ""));
     }
 
     [Fact]
@@ -65,17 +65,17 @@ public sealed class GapCoverageTests
         NbtSerializer serializer = NbtSerializer.Create(NbtOptions.JavaNetworkEdition);
         byte[] duplicate = [10, 0, 1, (byte)'a', 3, 0, 0, 0, 2, 0, 1, (byte)'a', 3, 0, 0, 0, 4, 0];
         Assert.Throws<InvalidDataException>(() => serializer.DeserializeUsingReflection<Dictionary<string, int>>(duplicate));
-        Assert.Throws<NotSupportedException>(() => serializer.SerializeUsingReflection(new Dictionary<int, int> { [1] = 2 }));
+        Assert.Throws<NotSupportedException>(() => serializer.SerializeUsingReflection(new Dictionary<int, int> { [1] = 2 }, ""));
         var immutable = ImmutableDictionary<string, int>.Empty.Add("a", 1);
-        Assert.Equal(immutable, serializer.DeserializeUsingReflection<ImmutableDictionary<string, int>>(serializer.SerializeUsingReflection(immutable)));
+        Assert.Equal(immutable, serializer.DeserializeUsingReflection<ImmutableDictionary<string, int>>(serializer.SerializeUsingReflection(immutable, "")));
         Assert.Throws<InvalidDataException>(() => serializer.DeserializeUsingReflection<RequiredModel>([10, 0]));
-        Assert.Throws<NotSupportedException>(() => serializer.SerializeUsingReflection(new object()));
-        Assert.Throws<NotSupportedException>(() => serializer.SerializeUsingReflection(TestEnum.One));
-        Assert.Throws<NotSupportedException>(() => serializer.SerializeUsingReflection<UnionBase>(new UnionChild(1)));
+        Assert.Throws<NotSupportedException>(() => serializer.SerializeUsingReflection(new object(), ""));
+        Assert.Throws<NotSupportedException>(() => serializer.SerializeUsingReflection(TestEnum.One, ""));
+        Assert.Throws<NotSupportedException>(() => serializer.SerializeUsingReflection<UnionBase>(new UnionChild(1), ""));
         var wrapped = new WrappedEnum(TestEnum.Two);
-        Assert.Equal(wrapped, serializer.DeserializeUsingReflection<WrappedEnum>(serializer.SerializeUsingReflection(wrapped)));
+        Assert.Equal(wrapped, serializer.DeserializeUsingReflection<WrappedEnum>(serializer.SerializeUsingReflection(wrapped, "")));
         var custom = new CustomType(7);
-        Assert.Equal(custom, serializer.DeserializeUsingReflection<CustomType>(serializer.SerializeUsingReflection(custom)));
+        Assert.Equal(custom, serializer.DeserializeUsingReflection<CustomType>(serializer.SerializeUsingReflection(custom, "")));
     }
 
     [Fact]
@@ -83,7 +83,7 @@ public sealed class GapCoverageTests
     {
         NbtSerializer serializer = NbtSerializer.Create(NbtOptions.JavaNetworkEdition);
         ConcurrentBag<byte[]> values = [];
-        Parallel.For(0, 100, i => values.Add(serializer.SerializeUsingReflection(new NormalRecord(i))));
+        Parallel.For(0, 100, i => values.Add(serializer.SerializeUsingReflection(new NormalRecord(i), "")));
         Assert.Equal(100, values.Count);
         Assert.All(values, bytes => Assert.IsType<NormalRecord>(serializer.DeserializeUsingReflection<NormalRecord>(bytes)));
     }
@@ -109,7 +109,7 @@ public sealed class GapCoverageTests
     public void ReadOnlyWriteOnlyAndMaximumStringBoundaries()
     {
         NbtSerializer serializer = NbtSerializer.Create(NbtOptions.JavaEdition);
-        ReadOnlyModel result = serializer.DeserializeUsingReflection<ReadOnlyModel>(serializer.SerializeUsingReflection(new ReadOnlyModel()))!;
+        ReadOnlyModel result = serializer.DeserializeUsingReflection<ReadOnlyModel>(serializer.SerializeUsingReflection(new ReadOnlyModel(), "root"))!;
         Assert.Equal(0, result.Value); // Read-only members are skipped during deserialization.
         Assert.Equal(new byte[] { 10, 0 }, serializer.SerializeUsingReflection(new WriteOnlyModel { Value = 3 }, ""));
         byte[] bytes = serializer.SerializeUsingReflection(new string('a', 65535), "");
@@ -120,7 +120,7 @@ public sealed class GapCoverageTests
     public void ReflectionEntryPointsRoundTrip()
     {
         NbtSerializer serializer = NbtSerializer.Create(NbtOptions.JavaNetworkEdition);
-        Assert.Equal(42, serializer.DeserializeUsingReflection<int>(serializer.SerializeUsingReflection(42)));
+        Assert.Equal(42, serializer.DeserializeUsingReflection<int>(serializer.SerializeUsingReflection(42, "")));
         // PublishAot requires a dedicated executable host; this covers the reflection API contract.
     }
 
