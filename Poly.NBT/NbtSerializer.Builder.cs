@@ -65,13 +65,14 @@ public sealed partial class NbtSerializer
             NbtSerializer serializer = ResolveSerializer(state);
             NbtConverter<TElement> element = GetOrAdd(shape.ElementType, serializer);
             Func<TEnumerable, IEnumerable<TElement>> getter = shape.GetGetEnumerable();
+            bool optimize = serializer.Options.OptimizePrimitiveListsToArrays;
             return shape.ConstructionStrategy switch
             {
                 CollectionConstructionStrategy.Mutable => new NbtMutableEnumerableConverter<TEnumerable, TElement>(
-                    serializer, element, getter, shape.GetDefaultConstructor(), shape.GetAppender()),
+                    serializer, element, getter, shape.GetDefaultConstructor(), shape.GetAppender(), optimize),
                 CollectionConstructionStrategy.Parameterized => new NbtParameterizedEnumerableConverter<TEnumerable, TElement>(
-                    serializer, element, getter, shape.GetParameterizedConstructor()),
-                _ => new NbtEnumerableConverter<TEnumerable, TElement>(serializer, element, getter),
+                    serializer, element, getter, shape.GetParameterizedConstructor(), optimize),
+                _ => new NbtEnumerableConverter<TEnumerable, TElement>(serializer, element, getter, optimize),
             };
         }
 

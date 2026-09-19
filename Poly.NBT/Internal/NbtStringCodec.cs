@@ -13,6 +13,7 @@ internal sealed class NbtStringCodec(NbtStringEncoding encoding, NbtLengthCodec 
         {
             NbtStringEncoding.ModifiedUtf8 => ModifiedUtf8.Decode(bytes),
             NbtStringEncoding.Utf8 => StrictUtf8.GetString(bytes),
+            NbtStringEncoding.Utf8WithEscapes => Utf8WithEscapes.Decode(bytes),
             _ => throw new InvalidOperationException(),
         };
     }
@@ -24,11 +25,89 @@ internal sealed class NbtStringCodec(NbtStringEncoding encoding, NbtLengthCodec 
         {
             NbtStringEncoding.ModifiedUtf8 => ModifiedUtf8.Encode(value),
             NbtStringEncoding.Utf8 => StrictUtf8.GetBytes(value),
+            NbtStringEncoding.Utf8WithEscapes => Utf8WithEscapes.Encode(value),
             _ => throw new InvalidOperationException(),
         };
 
         lengths.WriteStringLength(stream, bytes.Length);
         stream.Write(bytes);
+    }
+}
+
+internal static class Utf8WithEscapes
+{
+    public static byte[] Encode(string value)
+    {
+        using var output = new MemoryStream();
+        Span<byte> encoded = stackalloc byte[4];
+        for (int i = 0; i < value.Length;)
+        {
+            char character = value[i];
+            if (character is >= '\udc80' and <= '\udcff')
+            {
+                byte raw = (byte)(character - '\udc00');
+                output.WriteByte(0x1b);
+                output.WriteByte((byte)'x');
+                output.WriteByte(Hex(raw >> 4));
+                output.WriteByte(Hex(raw & 0xf));
+                i++;
+                continue;
+            }
+
+            System.Buffers.OperationStatus status = Rune.DecodeFromUtf16(value.AsSpan(i), out Rune rune, out int consumed);
+            if (status != System.Buffers.OperationStatus.Done) throw new EncoderFallbackException("The string contains an unpaired UTF-16 surrogate.");
+            int count = rune.EncodeToUtf8(encoded);
+            output.Write(encoded[..count]);
+            i += consumed;
+        }
+        return output.ToArray();
+
+        static byte Hex(int value) => (byte)(value < 10 ? '0' + value : 'A' + value - 10);
+    }
+
+    public static string Decode(ReadOnlySpan<byte> bytes)
+    {
+        var buffer = new byte[bytes.Length];
+        int offset = 0;
+        for (int i = 0; i < bytes.Length; i++)
+        {
+            if (bytes[i] == 0x1b && i + 3 < bytes.Length && (bytes[i + 1] is (byte)'x' or (byte)'X') &&
+                Hex(bytes[i + 2]) >= 0 && Hex(bytes[i + 3]) >= 0)
+            {
+                buffer[offset++] = (byte)(Hex(bytes[i + 2]) * 16 + Hex(bytes[i + 3]));
+                i += 3;
+            }
+            else buffer[offset++] = bytes[i];
+        }
+        // Amulet-NBT's utf8_escape codec follows Python's surrogateescape convention for
+        // undecodable bytes and represents them on the wire as ESC x HH. Hex digits are
+        // accepted case-insensitively; incomplete/non-x ESC sequences remain literal.
+        // https://github.com/Amulet-Team/Amulet-NBT
+        var result = new StringBuilder(offset);
+        ReadOnlySpan<byte> source = buffer.AsSpan(0, offset);
+        while (!source.IsEmpty)
+        {
+            System.Buffers.OperationStatus status = Rune.DecodeFromUtf8(source, out Rune rune, out int consumed);
+            if (status == System.Buffers.OperationStatus.Done)
+            {
+                result.Append(rune);
+                source = source[consumed..];
+            }
+            else
+            {
+                result.Append((char)(0xdc00 + source[0]));
+                source = source[1..];
+            }
+        }
+        return result.ToString();
+
+        static int Hex(byte value) => value switch
+        {
+            >= (byte)'0' and <= (byte)'9' => value - '0',
+            >= (byte)'a' and <= (byte)'f' => value - 'a' + 10,
+            >= (byte)'A' and <= (byte)'F' => value - 'A' + 10,
+            _ => -1,
+        };
     }
 }
 

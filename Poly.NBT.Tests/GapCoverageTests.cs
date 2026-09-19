@@ -34,13 +34,12 @@ public sealed class GapCoverageTests
     public void NestedListsAndCollectionMaterializationHaveStableBytes()
     {
         NbtSerializer serializer = NbtSerializer.Create(NbtOptions.JavaNetworkEdition);
-        Assert.Equal(new byte[] { 9, 9, 0, 0, 0, 2, 3, 0, 0, 0, 1, 0, 0, 0, 1, 3, 0, 0, 0, 1, 0, 0, 0, 2 }, serializer.SerializeUsingReflection(new List<List<int>> { new() { 1 }, new() { 2 } }));
-        Assert.Equal(new byte[] { 9, 9, 0, 0, 0, 1, 9, 0, 0, 0, 1, 3, 0, 0, 0, 1, 0, 0, 0, 1 }, serializer.SerializeUsingReflection(new List<List<List<int>>> { new() { new() { 1 } } }));
+        Assert.Equal(new byte[] { 9, 11, 0, 0, 0, 2, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2 }, serializer.SerializeUsingReflection(new List<List<int>> { new() { 1 }, new() { 2 } }));
+        Assert.Equal(new byte[] { 9, 9, 0, 0, 0, 1, 11, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1 }, serializer.SerializeUsingReflection(new List<List<List<int>>> { new() { new() { 1 } } }));
         // Per NBT spec, an empty TAG_List uses TAG_End (0) as its element type.
         Assert.Equal(new byte[] { 9, 0, 0, 0, 0, 0 }, serializer.SerializeUsingReflection(new List<List<int>>()));
         List<int> source = [1, 2, 3];
         byte[] expected = serializer.SerializeUsingReflection(source);
-        // Known defect: int[] currently takes the specialized TAG_Int_Array path instead of this collection path.
         Assert.Equal(expected, serializer.SerializeUsingReflection(source.ToArray()));
         Assert.Equal(expected, serializer.SerializeUsingReflection((ICollection<int>)source));
         Assert.Equal(expected, serializer.SerializeUsingReflection(Yield(source)));

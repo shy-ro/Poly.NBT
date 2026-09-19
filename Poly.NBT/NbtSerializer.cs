@@ -42,7 +42,7 @@ public sealed partial class NbtSerializer
     internal NbtLengthCodec Lengths { get; }
     internal NbtStringCodec Strings { get; }
 
-    public static NbtSerializer Create(NbtOptions options = default) => new(options);
+    public static NbtSerializer Create(NbtOptions options) => new(options);
 
     public void Serialize<T>(Stream destination, T? value, string rootTagName, ITypeShape<T> shape)
     {
@@ -62,6 +62,7 @@ public sealed partial class NbtSerializer
         converter.WritePayload(destination, value);
     }
 
+    /// <summary>Deserializes one root tag. Object-typed scalars become CLR primitives; object-typed lists and compounds remain DOM values.</summary>
     public T? Deserialize<T>(Stream source, ITypeShape<T> shape, bool rootNameOmitted = false)
     {
         ArgumentNullException.ThrowIfNull(source);
@@ -178,10 +179,10 @@ public sealed partial class NbtSerializer
             new PrimitiveConverter<float>(NbtTagType.Float, Numeric.ReadSingle, Numeric.WriteSingle),
             new PrimitiveConverter<double>(NbtTagType.Double, Numeric.ReadDouble, Numeric.WriteDouble),
             new StringConverter(Strings),
-            new ByteArrayConverter(Lengths),
-            new SByteArrayConverter(Lengths),
-            new IntArrayConverter(Lengths, Numeric),
-            new LongArrayConverter(Lengths, Numeric, Options.SupportsLongArray),
+            new ByteArrayConverter(Lengths, Options.OptimizePrimitiveListsToArrays),
+            new SByteArrayConverter(Lengths, Options.OptimizePrimitiveListsToArrays),
+            new IntArrayConverter(Lengths, Numeric, Options.OptimizePrimitiveListsToArrays),
+            new LongArrayConverter(Lengths, Numeric, Options.SupportsLongArray, Options.OptimizePrimitiveListsToArrays),
             new NbtElementConverter(this),
         ];
         return converters.ToDictionary(converter => converter.Type);

@@ -15,7 +15,11 @@ Passing an empty root name omits both the name length and name bytes. On reading
 
 - Java fixed-width numbers use big endian; Bedrock fixed-width numbers use little endian.
 - Bedrock network `TAG_Int` and `TAG_Long` use ZigZag VarInt/VarLong. Floating-point tags remain fixed-width IEEE 754 values in little-endian byte order.
-- Java strings use Java Modified UTF-8. Bedrock strings use strict UTF-8.
+- Java strings use Java Modified UTF-8. Bedrock strings use tolerant UTF-8 with ESC x HH raw-byte escapes.
+
+When deserializing into `object`, scalar tags are unpacked to their CLR primitive values; list and compound tags remain `NbtList` and `NbtCompound`.
+
+Future DOM conveniences may add explicit `NbtList` conversions to primitive arrays and helpers between `NbtCompound` and structured objects. They are intentionally outside the current wire serializer API.
 - Fixed-width string lengths are unsigned 16-bit values. Network string lengths are unsigned VarInts; network collection lengths are signed ZigZag VarInts.
 - Empty lists are emitted with `TAG_End` as their element type.
 - Enums and unions deliberately require a PolyType surrogate until their NBT representation is selected by the application.

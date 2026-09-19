@@ -49,11 +49,12 @@ public sealed class EdgeCaseTests
     }
 
     [Fact]
-    public void LongArrayIsRejectedWhenDialectDoesNotSupportIt()
+    public void LongArrayFallsBackToListWhenDialectDoesNotSupportIt()
     {
         NbtSerializer serializer = NbtSerializer.Create(NbtOptions.BedrockEdition with { RootTagNaming = NbtRootTagNaming.Omitted });
-        Assert.Throws<NotSupportedException>(() => serializer.SerializeUsingReflection(new[] { 1L }));
-        Assert.Throws<NotSupportedException>(() => serializer.DeserializeUsingReflection<long[]>([12, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0]));
+        Assert.Equal(NbtTagType.List, (NbtTagType)serializer.SerializeUsingReflection(new[] { 1L })[0]);
+        byte[] encoded = serializer.SerializeUsingReflection(new[] { 1L });
+        Assert.Equal(new[] { 1L }, serializer.DeserializeUsingReflection<long[]>(encoded));
     }
 
     [Fact]

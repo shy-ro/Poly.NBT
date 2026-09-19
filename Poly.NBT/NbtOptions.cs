@@ -10,6 +10,7 @@ public enum NbtStringEncoding : byte
 {
     ModifiedUtf8 = 0,
     Utf8 = 1,
+    Utf8WithEscapes = 2,
 }
 
 public enum NbtNumericEncoding : byte
@@ -32,6 +33,9 @@ public readonly record struct NbtOptions
     public NbtNumericEncoding NumericEncoding { get; init; }
     public NbtRootTagNaming RootTagNaming { get; init; }
     public bool SupportsLongArray { get; init; }
+    public bool OptimizePrimitiveListsToArrays { get; init; }
+
+    public NbtOptions() => OptimizePrimitiveListsToArrays = true;
 
     public static readonly NbtOptions JavaEdition = new()
     {
@@ -46,7 +50,7 @@ public readonly record struct NbtOptions
     public static readonly NbtOptions BedrockEdition = new()
     {
         Endianness = NbtEndianness.LittleEndian,
-        StringEncoding = NbtStringEncoding.Utf8,
+        StringEncoding = NbtStringEncoding.Utf8WithEscapes,
         SupportsLongArray = false,
     };
 
