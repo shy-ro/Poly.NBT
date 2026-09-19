@@ -14,14 +14,21 @@ internal class NbtEnumerableConverter<TEnumerable, TElement> : NbtConverter<TEnu
         _serializer = serializer;
         ElementConverter = elementConverter;
         _getEnumerable = getEnumerable;
-        Type elementType = Nullable.GetUnderlyingType(typeof(TElement)) ?? typeof(TElement);
-        _optimize = optimize && serializer.Options.OptimizePrimitiveListsToArrays && (elementType == typeof(byte) || elementType == typeof(sbyte) || elementType == typeof(int) || (elementType == typeof(long) && serializer.Options.SupportsLongArray));
+        _optimize = optimize && CanOptimizePrimitive(Nullable.GetUnderlyingType(typeof(TElement)) ?? typeof(TElement), serializer.Options);
     }
 
     public override NbtTagType TagType => NbtTagType.List;
     public override NbtTagType GetTagType(TEnumerable? value) => _optimize ? OptimizedTag : NbtTagType.List;
 
     public override TEnumerable? ReadPayload(Stream stream) => throw new NotSupportedException($"Collection {typeof(TEnumerable)} cannot be constructed.");
+
+    private static bool CanOptimizePrimitive(Type elementType, NbtOptions options)
+    {
+        if (!options.OptimizePrimitiveListsToArrays) return false;
+        if (elementType == typeof(byte) || elementType == typeof(sbyte) || elementType == typeof(int)) return true;
+        return elementType == typeof(long) && options.SupportsLongArray;
+    }
+
     protected TElement[] ReadOptimizedElements(Stream stream, NbtTagType actualType)
     {
         if (actualType != OptimizedTag) throw new InvalidDataException($"The {actualType} tag is incompatible with {typeof(TElement)} elements.");
