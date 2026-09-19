@@ -158,6 +158,27 @@ public sealed partial class NbtSerializer
 
     private NbtConverter<NbtElement> GetElementConverter() => (NbtConverter<NbtElement>)_builtIns[typeof(NbtElement)];
 
+    internal NbtElement ToElementInternal<T>(T? value, ITypeShape<T> shape)
+    {
+        using var stream = new MemoryStream();
+        Serialize(stream, value, "", shape);
+        stream.Position = 0;
+        NbtTagType rootType = ReadTagType(stream);
+        return GetElementConverter().ReadPayload(stream, rootType)
+            ?? throw new InvalidDataException("The root NBT value cannot be absent.");
+    }
+
+    internal T? FromElementInternal<T>(NbtElement element, ITypeShape<T> shape)
+    {
+        ArgumentNullException.ThrowIfNull(element);
+        using var stream = new MemoryStream();
+        NbtConverter<NbtElement> elementConverter = GetElementConverter();
+        stream.WriteByte((byte)elementConverter.GetTagType(element));
+        elementConverter.WritePayload(stream, element);
+        stream.Position = 0;
+        return Deserialize(stream, shape, rootNameOmitted: true);
+    }
+
     private (NbtTagType Type, string RootTagName) ReadRootHeader(Stream source, bool rootNameOmitted)
     {
         NbtTagType type = ReadTagType(source);

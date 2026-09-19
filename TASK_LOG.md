@@ -1,5 +1,31 @@
 # Task Log
 
+## 2026-09-19 - Add object and DOM bridge helpers
+
+### Scope
+
+Add source-generated, explicit-shape, and reflection entry points for converting between .NET object graphs and `NbtElement` trees.
+
+### Actual Changes
+
+- Added internal serializer bridge methods that reuse the configured value converters and existing DOM converter through an in-memory NBT payload.
+- Added C# 14 extension members for explicit `ITypeShape<T>`, `IShapeable<T>`, and reflection-based conversion.
+- Added coverage for all four presets, all three API paths, null handling, and incompatible target tags.
+
+### Verification
+
+- `dotnet build Poly.NBT.slnx --no-restore`: passed with 0 warnings and 0 errors.
+- `dotnet test Poly.NBT.slnx --no-build --no-restore`: passed, 65/65 tests.
+- `dotnet format Poly.NBT.slnx --no-restore --verify-no-changes --severity warn`: passed.
+- `git diff --check`: passed.
+
+### Known Issues and Next
+
+- Conversion intentionally materializes an in-memory NBT payload between the object converter and DOM converter.
+- The pre-existing `Poly.NBT/Dom/NbtElement.cs` modification remains outside this task commit.
+
+Planned commit subject: `Add ToElement and FromElement DOM bridge helpers`
+
 ## 2026-09-19 - Document the new public API contracts
 
 ### Scope
