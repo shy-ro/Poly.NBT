@@ -1,5 +1,32 @@
 # Task Log
 
+## 2026-09-19 - Add NbtList primitive array helpers
+
+### Scope
+
+Add explicit DOM conveniences for converting homogeneous scalar lists to CLR arrays.
+
+### Actual Changes
+
+- Added `NbtList.TryToArray` overloads for byte, signed byte, short, int, long, float, double, and string arrays.
+- Return `false` with a null output for mismatched element tags and support typed empty-array conversion.
+- Added tests for every overload and failure behavior.
+
+### Verification
+
+- `dotnet build Poly.NBT.slnx --no-restore`: passed with 0 warnings and 0 errors.
+- `dotnet test Poly.NBT.slnx --no-build --no-restore`: passed, 55/55 tests.
+- `dotnet format Poly.NBT.slnx --no-restore --verify-no-changes --severity warn`: passed.
+- `git diff --check`: passed.
+
+### Known Issues and Next
+
+- The helpers intentionally do not perform numeric coercion between different NBT tag types.
+- The pre-existing `Poly.NBT.slnx` modification remains outside this task commit.
+- Continue with `NbtDocument` after verification.
+
+Planned commit subject: `Add TryToArray helpers on NbtList`
+
 ## 2026-09-19 - Map enums through their underlying integers
 
 ### Scope

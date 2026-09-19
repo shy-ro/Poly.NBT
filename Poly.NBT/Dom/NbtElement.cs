@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Diagnostics.CodeAnalysis;
 using PolyType;
 
 namespace Poly.NBT.Dom;
@@ -59,12 +60,46 @@ public sealed record NbtList : NbtElement, IReadOnlyList<NbtElement>
     public NbtElement this[int index] => _items[index];
     public IEnumerator<NbtElement> GetEnumerator() => _items.GetEnumerator();
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+    public bool TryToArray([NotNullWhen(true)] out byte[]? values)
+        => TryToArray<NbtByte, byte>(out values, static item => unchecked((byte)item.Value));
+    public bool TryToArray([NotNullWhen(true)] out sbyte[]? values)
+        => TryToArray<NbtByte, sbyte>(out values, static item => item.Value);
+    public bool TryToArray([NotNullWhen(true)] out short[]? values)
+        => TryToArray<NbtShort, short>(out values, static item => item.Value);
+    public bool TryToArray([NotNullWhen(true)] out int[]? values)
+        => TryToArray<NbtInt, int>(out values, static item => item.Value);
+    public bool TryToArray([NotNullWhen(true)] out long[]? values)
+        => TryToArray<NbtLong, long>(out values, static item => item.Value);
+    public bool TryToArray([NotNullWhen(true)] out float[]? values)
+        => TryToArray<NbtFloat, float>(out values, static item => item.Value);
+    public bool TryToArray([NotNullWhen(true)] out double[]? values)
+        => TryToArray<NbtDouble, double>(out values, static item => item.Value);
+    public bool TryToArray([NotNullWhen(true)] out string[]? values)
+        => TryToArray<NbtString, string>(out values, static item => item.Value);
     public bool Equals(NbtList? other) => other is not null && this.SequenceEqual(other);
     public override int GetHashCode()
     {
         var hash = new HashCode();
         foreach (NbtElement item in _items) hash.Add(item);
         return hash.ToHashCode();
+    }
+
+    private bool TryToArray<TElement, TValue>([NotNullWhen(true)] out TValue[]? values, Func<TElement, TValue> selector)
+        where TElement : NbtElement
+    {
+        TValue[] result = new TValue[Count];
+        for (int i = 0; i < result.Length; i++)
+        {
+            if (_items[i] is not TElement item)
+            {
+                values = null;
+                return false;
+            }
+            result[i] = selector(item);
+        }
+
+        values = result;
+        return true;
     }
 }
 
