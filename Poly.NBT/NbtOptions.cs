@@ -28,14 +28,18 @@ public enum NbtRootTagNaming : byte
 /// <summary>Controls the NBT wire-format dialect.</summary>
 public readonly record struct NbtOptions
 {
+    private readonly byte _optimizePrimitiveListsToArrays;
+
     public NbtEndianness Endianness { get; init; }
     public NbtStringEncoding StringEncoding { get; init; }
     public NbtNumericEncoding NumericEncoding { get; init; }
     public NbtRootTagNaming RootTagNaming { get; init; }
     public bool SupportsLongArray { get; init; }
-    public bool OptimizePrimitiveListsToArrays { get; init; }
-
-    public NbtOptions() => OptimizePrimitiveListsToArrays = true;
+    public bool OptimizePrimitiveListsToArrays
+    {
+        get => _optimizePrimitiveListsToArrays != 2;
+        init => _optimizePrimitiveListsToArrays = value ? (byte)1 : (byte)2;
+    }
 
     public static readonly NbtOptions JavaEdition = new()
     {

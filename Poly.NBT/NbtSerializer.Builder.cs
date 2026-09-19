@@ -84,8 +84,11 @@ public sealed partial class NbtSerializer
 
             NbtConverter<TValue> valueConverter = GetOrAdd(shape.ValueType, serializer);
             Func<TDictionary, IReadOnlyDictionary<TKey, TValue>> originalGetter = shape.GetGetDictionary();
-            IReadOnlyDictionary<string, TValue> Getter(TDictionary dictionary) => originalGetter(dictionary)
-                .ToDictionary(pair => (string)(object)pair.Key, pair => pair.Value, StringComparer.Ordinal);
+            IEnumerable<KeyValuePair<string, TValue>> Getter(TDictionary dictionary)
+            {
+                foreach (KeyValuePair<TKey, TValue> pair in originalGetter(dictionary))
+                    yield return new((string)(object)pair.Key, pair.Value);
+            }
 
             return shape.ConstructionStrategy switch
             {
@@ -123,7 +126,7 @@ public sealed partial class NbtSerializer
             IDictionaryTypeShape<TDictionary, TKey, TValue> shape,
             NbtSerializer serializer,
             NbtConverter<TValue> valueConverter,
-            Func<TDictionary, IReadOnlyDictionary<string, TValue>> getter)
+            Func<TDictionary, IEnumerable<KeyValuePair<string, TValue>>> getter)
             where TKey : notnull
         {
             MutableCollectionConstructor<TKey, TDictionary> constructor = shape.GetDefaultConstructor();
@@ -137,7 +140,7 @@ public sealed partial class NbtSerializer
             IDictionaryTypeShape<TDictionary, TKey, TValue> shape,
             NbtSerializer serializer,
             NbtConverter<TValue> valueConverter,
-            Func<TDictionary, IReadOnlyDictionary<string, TValue>> getter)
+            Func<TDictionary, IEnumerable<KeyValuePair<string, TValue>>> getter)
             where TKey : notnull
         {
             ParameterizedCollectionConstructor<TKey, KeyValuePair<TKey, TValue>, TDictionary> constructor = shape.GetParameterizedConstructor();

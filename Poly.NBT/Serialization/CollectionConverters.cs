@@ -187,10 +187,10 @@ internal sealed class NbtParameterizedEnumerableConverter<TEnumerable, TElement>
 internal class NbtDictionaryConverter<TDictionary, TValue> : NbtConverter<TDictionary>
 {
     private readonly NbtSerializer _serializer;
-    private readonly Func<TDictionary, IReadOnlyDictionary<string, TValue>> _getDictionary;
+    private readonly Func<TDictionary, IEnumerable<KeyValuePair<string, TValue>>> _getDictionary;
     protected readonly NbtConverter<TValue> ValueConverter;
 
-    public NbtDictionaryConverter(NbtSerializer serializer, NbtConverter<TValue> valueConverter, Func<TDictionary, IReadOnlyDictionary<string, TValue>> getDictionary)
+    public NbtDictionaryConverter(NbtSerializer serializer, NbtConverter<TValue> valueConverter, Func<TDictionary, IEnumerable<KeyValuePair<string, TValue>>> getDictionary)
     {
         _serializer = serializer;
         ValueConverter = valueConverter;
@@ -228,7 +228,7 @@ internal class NbtDictionaryConverter<TDictionary, TValue> : NbtConverter<TDicti
 internal sealed class NbtMutableDictionaryConverter<TDictionary, TValue>(
     NbtSerializer serializer,
     NbtConverter<TValue> valueConverter,
-    Func<TDictionary, IReadOnlyDictionary<string, TValue>> getDictionary,
+    Func<TDictionary, IEnumerable<KeyValuePair<string, TValue>>> getDictionary,
     MutableCollectionConstructor<string, TDictionary> constructor,
     DictionaryInserter<TDictionary, string, TValue> inserter) : NbtDictionaryConverter<TDictionary, TValue>(serializer, valueConverter, getDictionary)
 {
@@ -243,7 +243,7 @@ internal sealed class NbtMutableDictionaryConverter<TDictionary, TValue>(
 internal sealed class NbtParameterizedDictionaryConverter<TDictionary, TValue>(
     NbtSerializer serializer,
     NbtConverter<TValue> valueConverter,
-    Func<TDictionary, IReadOnlyDictionary<string, TValue>> getDictionary,
+    Func<TDictionary, IEnumerable<KeyValuePair<string, TValue>>> getDictionary,
     ParameterizedCollectionConstructor<string, KeyValuePair<string, TValue>, TDictionary> constructor) : NbtDictionaryConverter<TDictionary, TValue>(serializer, valueConverter, getDictionary)
 {
     public override TDictionary ReadPayload(Stream stream) => constructor(ReadEntries(stream).ToArray());

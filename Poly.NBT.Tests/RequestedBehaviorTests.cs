@@ -3,6 +3,15 @@ namespace Poly.NBT.Tests;
 public sealed class RequestedBehaviorTests
 {
     [Fact]
+    public void PrimitiveListOptimizationDefaultsToEnabled()
+    {
+        Assert.True(default(NbtOptions).OptimizePrimitiveListsToArrays);
+        Assert.True(new NbtOptions().OptimizePrimitiveListsToArrays);
+        Assert.All(new[] { NbtOptions.JavaEdition, NbtOptions.JavaNetworkEdition, NbtOptions.BedrockEdition, NbtOptions.BedrockNetworkEdition },
+            options => Assert.True(options.OptimizePrimitiveListsToArrays));
+    }
+
+    [Fact]
     public void PrimitiveListOptimizationCanBeDisabledAndOutputsInteroperate()
     {
         NbtSerializer optimized = NbtSerializer.Create(NbtOptions.JavaNetworkEdition);
@@ -57,5 +66,7 @@ public sealed class RequestedBehaviorTests
         Assert.Equal("\u001bq", serializer.DeserializeUsingReflection<string>([8, 2, 0, 0x1b, (byte)'q']));
         Assert.Equal("\u001b", serializer.DeserializeUsingReflection<string>([8, 1, 0, 0x1b]));
         Assert.Equal('\udcab', Assert.Single(serializer.DeserializeUsingReflection<string>([8, 4, 0, 0x1b, (byte)'X', (byte)'a', (byte)'b'])!));
+        const string ambiguousLiteral = "\u001bxFF";
+        Assert.Equal(ambiguousLiteral, serializer.DeserializeUsingReflection<string>(serializer.SerializeUsingReflection(ambiguousLiteral)));
     }
 }

@@ -1,11 +1,13 @@
 using Poly.NBT.Dom;
 using PolyType;
+using System.Collections.Concurrent;
 
 namespace Poly.NBT.Serialization;
 
 internal sealed class RuntimeObjectConverter(NbtSerializer serializer, ITypeShapeProvider provider) : NbtConverter<object>
 {
     private readonly NbtElementConverter _domConverter = new(serializer);
+    private readonly ConcurrentDictionary<Type, NbtConverter> _localCache = new();
 
     public override NbtTagType TagType => NbtTagType.End;
 
@@ -53,6 +55,6 @@ internal sealed class RuntimeObjectConverter(NbtSerializer serializer, ITypeShap
     private NbtConverter Resolve(object value)
     {
         if (value.GetType() == typeof(object)) throw new NotSupportedException("A System.Object instance has no NBT representation.");
-        return serializer.GetConverter(value.GetType(), provider);
+        return _localCache.GetOrAdd(value.GetType(), type => serializer.GetConverter(type, provider));
     }
 }

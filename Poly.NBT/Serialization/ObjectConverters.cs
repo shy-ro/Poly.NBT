@@ -18,6 +18,7 @@ internal sealed class NbtPropertyConverter<TDeclaring, TProperty> : NbtPropertyC
     private readonly NbtConverter<TProperty> _converter;
     private readonly Getter<TDeclaring, TProperty>? _getter;
     private readonly Setter<TDeclaring, TProperty>? _setter;
+    private readonly byte[]? _cachedHeader;
 
     public NbtPropertyConverter(NbtSerializer serializer, IPropertyShape<TDeclaring, TProperty> property, NbtConverter<TProperty> converter)
         : base(property.Name, property.Position)
@@ -26,6 +27,13 @@ internal sealed class NbtPropertyConverter<TDeclaring, TProperty> : NbtPropertyC
         _converter = converter;
         if (property.HasGetter) _getter = property.GetGetter();
         if (property.HasSetter) _setter = property.GetSetter();
+        if (converter.TagType != NbtTagType.End)
+        {
+            using var header = new MemoryStream();
+            header.WriteByte((byte)converter.TagType);
+            serializer.Strings.Write(header, property.Name);
+            _cachedHeader = header.ToArray();
+        }
     }
 
     public NbtPropertyConverter(NbtSerializer serializer, IParameterShape<TDeclaring, TProperty> parameter, NbtConverter<TProperty> converter)
@@ -49,8 +57,13 @@ internal sealed class NbtPropertyConverter<TDeclaring, TProperty> : NbtPropertyC
     {
         TProperty value = (_getter ?? throw new InvalidOperationException()).Invoke(ref target);
         if (!_converter.ShouldWrite(value)) return;
-        stream.WriteByte((byte)_converter.GetTagType(value));
-        _serializer.Strings.Write(stream, Name);
+        NbtTagType tagType = _converter.GetTagType(value);
+        if (_cachedHeader is not null && tagType == _converter.TagType) stream.Write(_cachedHeader);
+        else
+        {
+            stream.WriteByte((byte)tagType);
+            _serializer.Strings.Write(stream, Name);
+        }
         _converter.WritePayload(stream, value);
     }
 }

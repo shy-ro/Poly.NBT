@@ -20,6 +20,8 @@ Passing an empty root name omits both the name length and name bytes. On reading
 When deserializing into `object`, scalar tags are unpacked to their CLR primitive values; list and compound tags remain `NbtList` and `NbtCompound`.
 
 Future DOM conveniences may add explicit `NbtList` conversions to primitive arrays and helpers between `NbtCompound` and structured objects. They are intentionally outside the current wire serializer API.
+
+Run the dependency-free microbenchmarks with `dotnet run --project benchmarks/Poly.NBT.Benchmarks/Poly.NBT.Benchmarks.csproj -c Release`.
 - Fixed-width string lengths are unsigned 16-bit values. Network string lengths are unsigned VarInts; network collection lengths are signed ZigZag VarInts.
 - Empty lists are emitted with `TAG_End` as their element type.
 - Enums and unions deliberately require a PolyType surrogate until their NBT representation is selected by the application.

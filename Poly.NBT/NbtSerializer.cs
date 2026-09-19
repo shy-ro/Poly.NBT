@@ -134,13 +134,17 @@ public sealed partial class NbtSerializer
             case NbtTagType.Long: Numeric.ReadInt64(stream); break;
             case NbtTagType.Float: Numeric.ReadSingle(stream); break;
             case NbtTagType.Double: Numeric.ReadDouble(stream); break;
-            case NbtTagType.String: Strings.Read(stream); break;
-            case NbtTagType.ByteArray: StreamIO.ReadExactly(stream, Lengths.ReadCollectionLength(stream)); break;
+            case NbtTagType.String: SkipBytes(stream, Lengths.ReadStringLength(stream)); break;
+            case NbtTagType.ByteArray: SkipBytes(stream, Lengths.ReadCollectionLength(stream)); break;
             case NbtTagType.IntArray:
-                for (int count = Lengths.ReadCollectionLength(stream); count > 0; count--) Numeric.ReadInt32(stream);
+                if (Numeric is VarIntNumericCodec)
+                    for (int count = Lengths.ReadCollectionLength(stream); count > 0; count--) Numeric.ReadInt32(stream);
+                else SkipBytes(stream, checked(Lengths.ReadCollectionLength(stream) * sizeof(int)));
                 break;
             case NbtTagType.LongArray:
-                for (int count = Lengths.ReadCollectionLength(stream); count > 0; count--) Numeric.ReadInt64(stream);
+                if (Numeric is VarIntNumericCodec)
+                    for (int count = Lengths.ReadCollectionLength(stream); count > 0; count--) Numeric.ReadInt64(stream);
+                else SkipBytes(stream, checked(Lengths.ReadCollectionLength(stream) * sizeof(long)));
                 break;
             case NbtTagType.List:
                 NbtTagType elementType = ReadTagType(stream);
@@ -157,6 +161,25 @@ public sealed partial class NbtSerializer
                 break;
             default:
                 throw new FormatException($"Unknown NBT tag type {type}.");
+        }
+    }
+
+    private static void SkipBytes(Stream stream, int count)
+    {
+        if (stream.CanSeek)
+        {
+            long target = checked(stream.Position + count);
+            if (target > stream.Length) throw new EndOfStreamException();
+            stream.Position = target;
+            return;
+        }
+
+        Span<byte> buffer = stackalloc byte[256];
+        while (count > 0)
+        {
+            int current = Math.Min(count, buffer.Length);
+            stream.ReadExactly(buffer[..current]);
+            count -= current;
         }
     }
 
@@ -183,6 +206,8 @@ public sealed partial class NbtSerializer
             new SByteArrayConverter(Lengths, Options.OptimizePrimitiveListsToArrays),
             new IntArrayConverter(Lengths, Numeric, Options.OptimizePrimitiveListsToArrays),
             new LongArrayConverter(Lengths, Numeric, Options.SupportsLongArray, Options.OptimizePrimitiveListsToArrays),
+            new FloatArrayConverter(Lengths, Numeric),
+            new DoubleArrayConverter(Lengths, Numeric),
             new NbtElementConverter(this),
         ];
         return converters.ToDictionary(converter => converter.Type);

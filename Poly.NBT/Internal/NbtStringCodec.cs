@@ -38,11 +38,25 @@ internal static class Utf8WithEscapes
 {
     public static byte[] Encode(string value)
     {
+        bool plainAscii = value.AsSpan().IndexOfAnyExceptInRange('\u0001', '\u007f') < 0;
+        if (plainAscii && !HasAmbiguousEscape(value))
+        {
+            byte[] ascii = GC.AllocateUninitializedArray<byte>(value.Length);
+            for (int i = 0; i < value.Length; i++) ascii[i] = (byte)value[i];
+            return ascii;
+        }
+
         using var output = new MemoryStream();
         Span<byte> encoded = stackalloc byte[4];
         for (int i = 0; i < value.Length;)
         {
             char character = value[i];
+            if (character == '\u001b' && i + 3 < value.Length && value[i + 1] is 'x' or 'X' && IsHex(value[i + 2]) && IsHex(value[i + 3]))
+            {
+                output.Write("\x1bx1B"u8);
+                i++;
+                continue;
+            }
             if (character is >= '\udc80' and <= '\udcff')
             {
                 byte raw = (byte)(character - '\udc00');
@@ -63,10 +77,24 @@ internal static class Utf8WithEscapes
         return output.ToArray();
 
         static byte Hex(int value) => (byte)(value < 10 ? '0' + value : 'A' + value - 10);
+        static bool IsHex(char value) => value is >= '0' and <= '9' or >= 'a' and <= 'f' or >= 'A' and <= 'F';
+        static bool HasAmbiguousEscape(string text)
+        {
+            for (int i = 0; i + 3 < text.Length; i++)
+                if (text[i] == '\u001b' && text[i + 1] is 'x' or 'X' && IsHex(text[i + 2]) && IsHex(text[i + 3])) return true;
+            return false;
+        }
     }
 
     public static string Decode(ReadOnlySpan<byte> bytes)
     {
+        bool ascii = true;
+        foreach (byte value in bytes)
+        {
+            if (value is < 0x01 or > 0x7f || value == 0x1b) { ascii = false; break; }
+        }
+        if (ascii) return Encoding.ASCII.GetString(bytes);
+
         var buffer = new byte[bytes.Length];
         int offset = 0;
         for (int i = 0; i < bytes.Length; i++)
@@ -115,6 +143,13 @@ internal static class ModifiedUtf8
 {
     public static byte[] Encode(string value)
     {
+        if (value.AsSpan().IndexOfAnyExceptInRange('\u0001', '\u007f') < 0)
+        {
+            byte[] ascii = GC.AllocateUninitializedArray<byte>(value.Length);
+            for (int i = 0; i < value.Length; i++) ascii[i] = (byte)value[i];
+            return ascii;
+        }
+
         int length = 0;
         foreach (char character in value)
         {
@@ -147,6 +182,13 @@ internal static class ModifiedUtf8
 
     public static string Decode(ReadOnlySpan<byte> bytes)
     {
+        bool ascii = true;
+        foreach (byte value in bytes)
+        {
+            if (value is < 0x01 or > 0x7f) { ascii = false; break; }
+        }
+        if (ascii) return Encoding.ASCII.GetString(bytes);
+
         char[] chars = GC.AllocateUninitializedArray<char>(bytes.Length);
         int byteOffset = 0;
         int charOffset = 0;
