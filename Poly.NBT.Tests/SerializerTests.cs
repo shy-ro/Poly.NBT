@@ -188,6 +188,40 @@ public sealed class SerializerTests
         Assert.False(reflection.GetParameters()[1].HasDefaultValue);
     }
 
+    [Fact]
+    public void EnumsUseUnderlyingIntegerTagAndBits()
+    {
+        NbtSerializer serializer = NbtSerializer.Create(NbtOptions.JavaNetworkEdition);
+        AssertEnum(serializer, ByteEnum.Value, NbtTagType.Byte, "01");
+        AssertEnum(serializer, SByteEnum.Value, NbtTagType.Byte, "80");
+        AssertEnum(serializer, ShortEnum.Value, NbtTagType.Short, "8000");
+        AssertEnum(serializer, UShortEnum.Value, NbtTagType.Short, "FFFF");
+        AssertEnum(serializer, IntEnum.Value, NbtTagType.Int, "80000000");
+        AssertEnum(serializer, UIntEnum.Value, NbtTagType.Int, "FFFFFFFF");
+        AssertEnum(serializer, LongEnum.Value, NbtTagType.Long, "8000000000000000");
+        AssertEnum(serializer, ULongEnum.Value, NbtTagType.Long, "FFFFFFFFFFFFFFFF");
+    }
+
+    [Fact]
+    public void SourceGeneratedEnumPropertyRoundTrips()
+    {
+        var value = new SourceEnumModel(UIntEnum.Value);
+        NbtSerializer serializer = NbtSerializer.Create(NbtOptions.JavaNetworkEdition);
+        using var stream = new MemoryStream();
+        serializer.Serialize(stream, value, "");
+        stream.Position = 0;
+
+        Assert.Equal(value, serializer.Deserialize<SourceEnumModel>(stream));
+    }
+
+    private static void AssertEnum<TEnum>(NbtSerializer serializer, TEnum value, NbtTagType tag, string payloadHex)
+        where TEnum : struct, Enum
+    {
+        byte[] bytes = serializer.SerializeUsingReflection(value, "");
+        Assert.Equal([(byte)tag, .. Convert.FromHexString(payloadHex)], bytes);
+        Assert.Equal(value, serializer.DeserializeUsingReflection<TEnum>(bytes));
+    }
+
     private static NbtTagType TagOf(byte[] bytes) => (NbtTagType)bytes[0];
 }
 
@@ -202,3 +236,15 @@ public sealed class OptionalModel
 
 [GenerateShape]
 public sealed partial record SourcePlayer(int Score);
+
+[GenerateShape]
+public sealed partial record SourceEnumModel(UIntEnum Value);
+
+public enum ByteEnum : byte { Value = 1 }
+public enum SByteEnum : sbyte { Value = sbyte.MinValue }
+public enum ShortEnum : short { Value = short.MinValue }
+public enum UShortEnum : ushort { Value = ushort.MaxValue }
+public enum IntEnum : int { Value = int.MinValue }
+public enum UIntEnum : uint { Value = uint.MaxValue }
+public enum LongEnum : long { Value = long.MinValue }
+public enum ULongEnum : ulong { Value = ulong.MaxValue }

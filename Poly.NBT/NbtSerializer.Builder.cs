@@ -111,7 +111,7 @@ public sealed partial class NbtSerializer
         }
 
         public override object? VisitEnum<TEnum, TUnderlying>(IEnumTypeShape<TEnum, TUnderlying> shape, object? state)
-            => throw new NotSupportedException("NBT enum representation has not been selected. Use a PolyType surrogate to specify one.");
+            => new NbtEnumConverter<TEnum, TUnderlying>(ResolveSerializer(state));
 
         public override object? VisitUnion<TUnion>(IUnionTypeShape<TUnion> shape, object? state)
             => throw new NotSupportedException("NBT union representation has not been selected. Use a PolyType surrogate to specify one.");

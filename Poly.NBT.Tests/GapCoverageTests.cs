@@ -70,7 +70,7 @@ public sealed class GapCoverageTests
         Assert.Equal(immutable, serializer.DeserializeUsingReflection<ImmutableDictionary<string, int>>(serializer.SerializeUsingReflection(immutable, "")));
         Assert.Throws<InvalidDataException>(() => serializer.DeserializeUsingReflection<RequiredModel>([10, 0]));
         Assert.Throws<NotSupportedException>(() => serializer.SerializeUsingReflection(new object(), ""));
-        Assert.Throws<NotSupportedException>(() => serializer.SerializeUsingReflection(TestEnum.One, ""));
+        Assert.Equal(TestEnum.One, serializer.DeserializeUsingReflection<TestEnum>(serializer.SerializeUsingReflection(TestEnum.One, "")));
         Assert.Throws<NotSupportedException>(() => serializer.SerializeUsingReflection<UnionBase>(new UnionChild(1), ""));
         var wrapped = new WrappedEnum(TestEnum.Two);
         Assert.Equal(wrapped, serializer.DeserializeUsingReflection<WrappedEnum>(serializer.SerializeUsingReflection(wrapped, "")));

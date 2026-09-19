@@ -1,5 +1,32 @@
 # Task Log
 
+## 2026-09-19 - Map enums through their underlying integers
+
+### Scope
+
+Define the default NBT representation for CLR enums without changing standalone unsigned scalar support.
+
+### Actual Changes
+
+- Added an enum converter that maps 8-, 16-, 32-, and 64-bit underlying types to `TAG_Byte`, `TAG_Short`, `TAG_Int`, and `TAG_Long`.
+- Preserved unsigned enum bit patterns through the corresponding signed NBT payload width.
+- Added reflection coverage for all eight legal enum underlying types and source-generated enum-property coverage.
+
+### Verification
+
+- `dotnet build Poly.NBT.slnx --no-restore`: passed with 0 warnings and 0 errors.
+- `dotnet test Poly.NBT.slnx --no-build --no-restore`: passed, 53/53 tests.
+- `dotnet format Poly.NBT.slnx --no-restore --verify-no-changes --severity warn`: passed.
+- `git diff --check`: passed.
+
+### Known Issues and Next
+
+- Union representation remains unsupported.
+- The pre-existing `Poly.NBT.slnx` modification remains outside this task commit.
+- Continue with `NbtList.TryToArray` helpers after verification.
+
+Planned commit subject: `Map enums to NBT integer tags via underlying type`
+
 ## 2026-09-19 - Require explicit root tag names
 
 ### Scope
