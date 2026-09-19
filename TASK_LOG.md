@@ -1,5 +1,33 @@
 # Task Log
 
+## 2026-09-19 - Add root-aware NbtDocument APIs
+
+### Scope
+
+Pair a DOM root element with its root tag name and preserve that name during document-level reads.
+
+### Actual Changes
+
+- Added immutable `NbtDocument` with `RootTagName` and `RootElement` properties.
+- Added stream and buffer serializer overloads for writing and reading documents through the existing DOM converter.
+- Preserved stream trailing-data behavior, buffer strictness, and omitted-root preset behavior.
+- Added named-root, omitted-root, and trailing-data tests.
+
+### Verification
+
+- `dotnet build Poly.NBT.slnx --no-restore`: passed with 0 warnings and 0 errors.
+- `dotnet test Poly.NBT.slnx --no-build --no-restore`: passed, 58/58 tests.
+- `dotnet format Poly.NBT.slnx --no-restore --verify-no-changes --severity warn`: passed.
+- `git diff --check`: passed.
+
+### Known Issues and Next
+
+- Deserializing formats that omit the root name returns `string.Empty` because no name exists on the wire.
+- The pre-existing `Poly.NBT.slnx` modification remains outside this task commit.
+- Continue with README documentation after verification.
+
+Planned commit subject: `Add NbtDocument for root name and element pairing`
+
 ## 2026-09-19 - Add NbtList primitive array helpers
 
 ### Scope

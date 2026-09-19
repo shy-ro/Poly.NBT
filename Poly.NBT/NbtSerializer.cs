@@ -1,4 +1,5 @@
 using System.Diagnostics.CodeAnalysis;
+using Poly.NBT.Dom;
 using Poly.NBT.Internal;
 using Poly.NBT.Serialization;
 using PolyType;
@@ -50,6 +51,18 @@ public sealed partial class NbtSerializer
         ArgumentNullException.ThrowIfNull(rootTagName);
         ArgumentNullException.ThrowIfNull(shape);
         NbtConverter<T> converter = GetConverter(shape);
+        SerializeRoot(destination, value, rootTagName, converter);
+    }
+
+    public void Serialize(Stream destination, NbtDocument document)
+    {
+        ArgumentNullException.ThrowIfNull(destination);
+        ArgumentNullException.ThrowIfNull(document);
+        SerializeRoot(destination, document.RootElement, document.RootTagName, GetElementConverter());
+    }
+
+    private void SerializeRoot<T>(Stream destination, T? value, string rootTagName, NbtConverter<T> converter)
+    {
         if (!converter.ShouldWrite(value)) throw new InvalidDataException("The root NBT value cannot be absent.");
 
         NbtTagType rootType = converter.GetTagType(value);
@@ -68,13 +81,17 @@ public sealed partial class NbtSerializer
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(shape);
         NbtConverter<T> converter = GetConverter(shape);
-        NbtTagType actual = ReadTagType(source);
-        if (Options.RootTagNaming == NbtRootTagNaming.Named && !rootNameOmitted)
-        {
-            _ = Strings.Read(source);
-        }
-
+        (NbtTagType actual, _) = ReadRootHeader(source, rootNameOmitted);
         return converter.ReadPayload(source, actual);
+    }
+
+    public NbtDocument DeserializeDocument(Stream source, bool rootNameOmitted = false)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        (NbtTagType actual, string rootTagName) = ReadRootHeader(source, rootNameOmitted);
+        NbtElement rootElement = GetElementConverter().ReadPayload(source, actual)
+            ?? throw new InvalidDataException("The root NBT element cannot be null.");
+        return new(rootTagName, rootElement);
     }
 
     public byte[] Serialize<T>(T? value, string rootTagName, ITypeShape<T> shape)
@@ -84,10 +101,25 @@ public sealed partial class NbtSerializer
         return stream.ToArray();
     }
 
+    public byte[] Serialize(NbtDocument document)
+    {
+        using var stream = new MemoryStream();
+        Serialize(stream, document);
+        return stream.ToArray();
+    }
+
     public T? Deserialize<T>(ReadOnlySpan<byte> data, ITypeShape<T> shape, bool rootNameOmitted = false)
     {
         using var stream = new MemoryStream(data.ToArray(), writable: false);
         T? result = Deserialize(stream, shape, rootNameOmitted);
+        if (stream.Position != stream.Length) throw new InvalidDataException("Trailing data follows the root NBT tag.");
+        return result;
+    }
+
+    public NbtDocument DeserializeDocument(ReadOnlySpan<byte> data, bool rootNameOmitted = false)
+    {
+        using var stream = new MemoryStream(data.ToArray(), writable: false);
+        NbtDocument result = DeserializeDocument(stream, rootNameOmitted);
         if (stream.Position != stream.Length) throw new InvalidDataException("Trailing data follows the root NBT tag.");
         return result;
     }
@@ -122,6 +154,17 @@ public sealed partial class NbtSerializer
     internal static void EnsureTagType(NbtTagType expected, NbtTagType actual)
     {
         if (actual != expected) throw new InvalidDataException($"Expected {expected}, but found {actual}.");
+    }
+
+    private NbtConverter<NbtElement> GetElementConverter() => (NbtConverter<NbtElement>)_builtIns[typeof(NbtElement)];
+
+    private (NbtTagType Type, string RootTagName) ReadRootHeader(Stream source, bool rootNameOmitted)
+    {
+        NbtTagType type = ReadTagType(source);
+        string rootTagName = Options.RootTagNaming == NbtRootTagNaming.Named && !rootNameOmitted
+            ? Strings.Read(source)
+            : string.Empty;
+        return (type, rootTagName);
     }
 
     internal void SkipPayload(Stream stream, NbtTagType type)
