@@ -17,21 +17,36 @@ public sealed record NbtByteArray(byte[] Value) : NbtElement
 {
     public bool Equals(NbtByteArray? other) => other is not null && Value.AsSpan().SequenceEqual(other.Value);
     public override int GetHashCode() => StructuralHash(Value);
-    private static int StructuralHash(IEnumerable<byte> values) => values.Aggregate(new HashCode(), (hash, value) => { hash.Add(value); return hash; }).ToHashCode();
+    private static int StructuralHash(ReadOnlySpan<byte> values)
+    {
+        var hash = new HashCode();
+        hash.AddBytes(values);
+        return hash.ToHashCode();
+    }
 }
 
 public sealed record NbtIntArray(int[] Value) : NbtElement
 {
     public bool Equals(NbtIntArray? other) => other is not null && Value.AsSpan().SequenceEqual(other.Value);
     public override int GetHashCode() => StructuralHash(Value);
-    private static int StructuralHash(IEnumerable<int> values) => values.Aggregate(new HashCode(), (hash, value) => { hash.Add(value); return hash; }).ToHashCode();
+    private static int StructuralHash(ReadOnlySpan<int> values)
+    {
+        var hash = new HashCode();
+        hash.AddBytes(System.Runtime.InteropServices.MemoryMarshal.AsBytes(values));
+        return hash.ToHashCode();
+    }
 }
 
 public sealed record NbtLongArray(long[] Value) : NbtElement
 {
     public bool Equals(NbtLongArray? other) => other is not null && Value.AsSpan().SequenceEqual(other.Value);
     public override int GetHashCode() => StructuralHash(Value);
-    private static int StructuralHash(IEnumerable<long> values) => values.Aggregate(new HashCode(), (hash, value) => { hash.Add(value); return hash; }).ToHashCode();
+    private static int StructuralHash(ReadOnlySpan<long> values)
+    {
+        var hash = new HashCode();
+        hash.AddBytes(System.Runtime.InteropServices.MemoryMarshal.AsBytes(values));
+        return hash.ToHashCode();
+    }
 }
 
 public sealed record NbtList : NbtElement, IReadOnlyList<NbtElement>
