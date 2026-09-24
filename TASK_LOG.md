@@ -1,5 +1,70 @@
 # Task Log
 
+## 2026-09-25 - Bound declared collection and string lengths
+
+### Scope
+
+Close the second input-driven crash class the audit found, and the more dangerous of the two. Every length
+prefix in the wire format - the element count of a collection, the encoded byte length of a string - is read
+and then handed straight to an allocation, so a handful of bytes could demand two gigabytes before one payload
+byte was read. The audit measured `OutOfMemoryException`, which a host cannot pre-empt.
+
+| Dialect | Path | Trigger | Before | After |
+|:---|:---|:---|:---|:---|
+| Java network | `TAG_Byte_Array` | `07 7FFFFFFF` (5 bytes) | `OutOfMemoryException` | `InvalidDataException` |
+| Java network | `TAG_List` of bytes | `09 01 7FFFFFFF` (6 bytes) | `OutOfMemoryException` | `InvalidDataException` |
+| Bedrock network | `TAG_Int_Array` | `0B FEFFFFFF0F` (6 bytes) | `OutOfMemoryException` | `InvalidDataException` |
+| Bedrock network | `TAG_String` | `08 FFFFFFFF0F` (6 bytes) | `OverflowException` | `InvalidDataException` |
+
+### Actual Changes
+
+- Added `NbtOptions.MaxCollectionLength` with a documented zero sentinel, `DefaultMaxCollectionLength = 1 << 24`,
+  and set it explicitly on all four presets, mirroring how `MaxDepth` is declared. It caps both a collection's
+  element count and a string's encoded byte length, on reading and on writing.
+- Rewrote `NbtLengthCodec` around that limit. The base class now owns a single private `Validate` gate, and
+  `FixedLengthCodec`/`VarIntLengthCodec` only supply the dialect-specific read and write primitives. Both
+  `ReadCollectionLength(Stream)` and `ReadStringLength(Stream)` funnel through the gate before returning, so
+  every allocation site in the library inherits the check rather than repeating it.
+- The `*Core` members return `long` instead of `int`. A VarInt length is a 32-bit *unsigned* field, so
+  `uint.MaxValue` is representable on the wire; the previous `checked((int)VarInt.ReadUInt32(stream))` surfaced
+  that as an `OverflowException`, which reads as a library bug rather than as bad input. Widening to `long` lets
+  the gate reject it as out-of-range data.
+- The write side is gated too. A caller-built collection above the limit throws the same
+  `InvalidDataException` instead of emitting a document the reader would refuse.
+- `NbtSerializer` passes the resolved limit into both codecs and rejects a negative `MaxCollectionLength` at
+  construction, next to the existing negative-`MaxDepth` check.
+- New `LengthLimitTests` (nine tests): each preset carries the default; a byte-array, list, IntArray and string
+  length bomb is rejected with a message naming the option and the offending length; a truncated collection is
+  still reported as `EndOfStreamException` rather than as an oversized one; the limit is configurable and zero
+  selects the default; the write path is gated; a negative limit is rejected.
+- Documented the limit in the `MaxCollectionLength` remarks and in a README section next to "Nesting depth",
+  including what it does *not* cover.
+
+### Verification
+
+- `dotnet build Poly.NBT.slnx --no-restore`: 0 warnings, 0 errors.
+- `dotnet test Poly.NBT.slnx --no-build --no-restore`: 139/139 passed (previously 130).
+- `dotnet format Poly.NBT.slnx --no-restore --verify-no-changes --severity warn`: passed.
+- Re-ran the audit's tampered-length probe against the new build. All three payloads that used to report
+  `OutOfMemoryException` now report `InvalidDataException`:
+  `077FFFFFFF`, `077FFFFFFF010203`, `09017FFFFFFF`.
+- No cost on the success path: `Validate` is a compare and a branch, and the DOM allocation probes were
+  unchanged (200-int document still 912 bytes).
+
+### Known Issues and Next
+
+- `1 << 24` is a judgement call, not a Minecraft-derived number. It admits every realistic document - a whole
+  16x16x16 chunk section is a few thousand elements - and keeps the worst case for a hostile `TAG_Long_Array`
+  around 134 MB instead of unbounded. It is configurable in both directions.
+- The limit is *per collection*, so it does not bound a document's total size; a broad tree of individually
+  legal collections still adds up. Minecraft's `NbtAccounter` accumulates a running total instead. That is
+  documented on the property and in the README, with the advice to bound the input stream as well. A real
+  total-accounting mode remains open work.
+- Deliberately no "compare the declared length against the bytes remaining" pre-check, which the audit also
+  suggested. For a seekable stream it would reject a liar one allocation earlier, but it would make the
+  failure mode depend on `CanSeek`, and a non-seekable stream cannot do it at all. Truncation therefore keeps
+  its own answer (`EndOfStreamException` from `ReadExactly`), which is pinned by a test.
+
 ## 2026-09-25 - Clear nullable warnings in the allocation tests
 
 ### Scope

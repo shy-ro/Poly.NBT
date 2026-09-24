@@ -46,6 +46,9 @@ public readonly record struct NbtOptions
     /// <summary>The nesting limit used when <see cref="MaxDepth"/> is not set.</summary>
     public const int DefaultMaxDepth = 512;
 
+    /// <summary>The length limit used when <see cref="MaxCollectionLength"/> is not set.</summary>
+    public const int DefaultMaxCollectionLength = 1 << 24;
+
     public NbtEndianness Endianness { get; init; }
     public NbtStringEncoding StringEncoding { get; init; }
     public NbtNumericEncoding NumericEncoding { get; init; }
@@ -77,11 +80,40 @@ public readonly record struct NbtOptions
     /// <summary>The nesting limit with <see cref="MaxDepth"/>'s zero sentinel resolved.</summary>
     internal int EffectiveMaxDepth => MaxDepth > 0 ? MaxDepth : DefaultMaxDepth;
 
+    /// <summary>
+    /// The largest collection element count, and the largest encoded string byte length, that may be read or
+    /// written. Zero selects <see cref="DefaultMaxCollectionLength"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Both numbers arrive as a wire length and both immediately drive an allocation, so a four-byte length
+    /// field is enough to request two gigabytes before a single payload byte is read. The default admits every
+    /// realistic document - a whole chunk section is a few thousand elements - while keeping the worst-case
+    /// allocation for a hostile <c>TAG_Long_Array</c> in the low hundreds of megabytes instead of unbounded.
+    /// </para>
+    /// <para>
+    /// The limit applies to writing as well, so a caller-built collection cannot exceed it either. Raise it for
+    /// documents that legitimately hold more than <see cref="DefaultMaxCollectionLength"/> elements in one
+    /// collection; set it explicitly on both ends when exchanging such documents.
+    /// </para>
+    /// <para>
+    /// The limit is per collection, so it does not bound a document's <em>total</em> size: a broad tree of
+    /// individually legal collections can still add up. Hosts that accept NBT from an untrusted source should
+    /// bound the input too - reject streams larger than a fixed number of bytes. Minecraft's <c>NbtAccounter</c>
+    /// solves the same problem by accumulating a running total; this property is the per-value equivalent.
+    /// </para>
+    /// </remarks>
+    public int MaxCollectionLength { get; init; }
+
+    /// <summary>The length limit with <see cref="MaxCollectionLength"/>'s zero sentinel resolved.</summary>
+    internal int EffectiveMaxCollectionLength => MaxCollectionLength > 0 ? MaxCollectionLength : DefaultMaxCollectionLength;
+
     public static readonly NbtOptions JavaEdition = new()
     {
         SupportsLongArray = true,
         OptimizePrimitiveListsToArrays = true,
         MaxDepth = DefaultMaxDepth,
+        MaxCollectionLength = DefaultMaxCollectionLength,
     };
 
     public static readonly NbtOptions JavaNetworkEdition = JavaEdition with
@@ -96,6 +128,7 @@ public readonly record struct NbtOptions
         SupportsLongArray = false,
         OptimizePrimitiveListsToArrays = true,
         MaxDepth = DefaultMaxDepth,
+        MaxCollectionLength = DefaultMaxCollectionLength,
     };
 
     public static readonly NbtOptions BedrockNetworkEdition = BedrockEdition with

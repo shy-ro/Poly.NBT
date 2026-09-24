@@ -88,6 +88,25 @@ offending bracket — the message names the option to raise. Zero selects the li
 The bound exists because `StackOverflowException` cannot be caught in .NET: without it, 15 KB of nested
 `TAG_List` headers or 6 KB of nested brackets terminate the process, which no host can defend against.
 
+### Collection and string lengths
+
+A length prefix is four bytes (or a VarInt) that immediately drives an allocation, so a hostile document
+can ask for two gigabytes before one payload byte has been read. `NbtOptions.MaxCollectionLength` caps
+both the element count of a collection and the encoded byte length of a string; it applies to reading and
+to writing, and defaults to `1 << 24` elements (zero selects the library default). Past the limit reads
+and writes throw `InvalidDataException`, and a negative limit is rejected when the serializer is created.
+
+The default admits every realistic document — a whole 16³ chunk section is a few thousand elements — while
+keeping the worst case for a hostile `TAG_Long_Array` in the low hundreds of megabytes. A truncated
+collection is still reported as `EndOfStreamException`, not as an oversized one, so the two conditions stay
+distinguishable.
+
+The limit is per collection. It does not bound a document's *total* size: a broad tree of individually
+legal collections can still add up. When accepting NBT from an untrusted source, bound the input as well —
+reject streams larger than a fixed number of bytes before handing them to `NbtSerializer`. Minecraft's
+`NbtAccounter` solves the same problem with running total accounting; `MaxCollectionLength` is the
+per-value equivalent.
+
 ### PolyType attributes
 ```csharp
 [GenerateShape]

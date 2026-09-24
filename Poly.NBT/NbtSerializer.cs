@@ -29,8 +29,8 @@ public sealed partial class NbtSerializer
             _ => throw new ArgumentOutOfRangeException(nameof(options)),
         };
         Lengths = options.NumericEncoding == NbtNumericEncoding.VarIntZigZag
-            ? new VarIntLengthCodec()
-            : new FixedLengthCodec(Numeric);
+            ? new VarIntLengthCodec(options.EffectiveMaxCollectionLength)
+            : new FixedLengthCodec(Numeric, options.EffectiveMaxCollectionLength);
         Strings = new NbtStringCodec(options.StringEncoding, Lengths);
         _builtIns = CreateBuiltIns();
         _converterCache = new MultiProviderTypeCache
@@ -307,6 +307,7 @@ public sealed partial class NbtSerializer
         if (!Enum.IsDefined(options.NumericEncoding)) throw new ArgumentOutOfRangeException(nameof(options.NumericEncoding));
         if (!Enum.IsDefined(options.RootTagNaming)) throw new ArgumentOutOfRangeException(nameof(options.RootTagNaming));
         if (options.MaxDepth < 0) throw new ArgumentOutOfRangeException(nameof(options.MaxDepth));
+        if (options.MaxCollectionLength < 0) throw new ArgumentOutOfRangeException(nameof(options.MaxCollectionLength));
     }
 
     private sealed class DelayedConverterFactory : IDelayedValueFactory
