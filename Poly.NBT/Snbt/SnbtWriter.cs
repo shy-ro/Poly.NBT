@@ -7,6 +7,12 @@ namespace Poly.NBT.Snbt;
 /// <summary>Writes <see cref="NbtElement"/> trees as compact, single-line SNBT text.</summary>
 /// <remarks>
 /// <para>
+/// The <see cref="TextWriter"/> overloads stream the document: each scalar is formatted into a small stack
+/// buffer and written as soon as it is produced, so the complete document is never materialized as a string.
+/// The <see cref="string"/> overloads are convenience wrappers that collect the same output in a
+/// <see cref="StringWriter"/>.
+/// </para>
+/// <para>
 /// Exactly one aspect of the output depends on the dialect supplied via <see cref="SnbtOptions"/>: floating-point
 /// values only use <c>E</c>-notation when <see cref="SnbtOptions.AllowScientificNotation"/> is enabled, and are
 /// expanded into an equivalent plain decimal literal otherwise. Every other flag describes what the parser
@@ -22,6 +28,9 @@ namespace Poly.NBT.Snbt;
 /// </remarks>
 public static class SnbtWriter
 {
+    /// <summary>The bound covers the widest expansion any <see cref="double"/> can need: 324 fractional digits.</summary>
+    private static readonly string Zeroes = new('0', 400);
+
     /// <summary>Writes an element to the given writer using the <see cref="SnbtOptions.v1_21_5"/> dialect.</summary>
     public static void Write(TextWriter writer, NbtElement element)
         => Write(writer, element, SnbtOptions.v1_21_5);
@@ -30,7 +39,8 @@ public static class SnbtWriter
     public static void Write(TextWriter writer, NbtElement element, SnbtOptions options)
     {
         ArgumentNullException.ThrowIfNull(writer);
-        writer.Write(Write(element, options));
+        ArgumentNullException.ThrowIfNull(element);
+        AppendElement(writer, element, options);
     }
 
     /// <summary>Writes the root element of a document using the <see cref="SnbtOptions.v1_21_5"/> dialect.</summary>
@@ -41,7 +51,8 @@ public static class SnbtWriter
     public static void Write(TextWriter writer, NbtDocument document, SnbtOptions options)
     {
         ArgumentNullException.ThrowIfNull(writer);
-        writer.Write(Write(document, options));
+        ArgumentNullException.ThrowIfNull(document);
+        AppendElement(writer, document.RootElement, options);
     }
 
     /// <summary>Formats an element as SNBT text using the <see cref="SnbtOptions.v1_21_5"/> dialect.</summary>
@@ -52,9 +63,9 @@ public static class SnbtWriter
     public static string Write(NbtElement element, SnbtOptions options)
     {
         ArgumentNullException.ThrowIfNull(element);
-        var builder = new StringBuilder();
-        Append(builder, element, options);
-        return builder.ToString();
+        using var writer = new StringWriter(CultureInfo.InvariantCulture);
+        AppendElement(writer, element, options);
+        return writer.ToString();
     }
 
     /// <summary>Formats the root element of a document using the <see cref="SnbtOptions.v1_21_5"/> dialect.</summary>
@@ -68,162 +79,255 @@ public static class SnbtWriter
         return Write(document.RootElement, options);
     }
 
-    private static void Append(StringBuilder builder, NbtElement element, SnbtOptions options)
+    private static void AppendElement(TextWriter writer, NbtElement element, SnbtOptions options)
     {
         switch (element)
         {
-            case NbtByte item: AppendInteger(builder, item.Value, "b"); break;
-            case NbtShort item: AppendInteger(builder, item.Value, "s"); break;
-            case NbtInt item: builder.Append(item.Value.ToString(CultureInfo.InvariantCulture)); break;
-            case NbtLong item: AppendInteger(builder, item.Value, "L"); break;
-            case NbtFloat item: builder.Append(FormatFloat(item.Value, options)).Append('f'); break;
-            case NbtDouble item: builder.Append(FormatDouble(item.Value, options)).Append('d'); break;
-            case NbtString item: builder.Append(FormatString(item.Value)); break;
-            case NbtList item: AppendList(builder, item, options); break;
-            case NbtCompound item: AppendCompound(builder, item, options); break;
-            case NbtByteArray item: AppendByteArray(builder, item.Value); break;
-            case NbtIntArray item: AppendIntArray(builder, item.Value); break;
-            case NbtLongArray item: AppendLongArray(builder, item.Value); break;
+            case NbtByte item: AppendInteger(writer, item.Value, 'b'); break;
+            case NbtShort item: AppendInteger(writer, item.Value, 's'); break;
+            case NbtInt item: AppendInteger(writer, item.Value); break;
+            case NbtLong item: AppendInteger(writer, item.Value, 'L'); break;
+            case NbtFloat item: AppendFloat(writer, item.Value, options); break;
+            case NbtDouble item: AppendDouble(writer, item.Value, options); break;
+            case NbtString item: AppendString(writer, item.Value); break;
+            case NbtList item: AppendList(writer, item, options); break;
+            case NbtCompound item: AppendCompound(writer, item, options); break;
+            case NbtByteArray item: AppendByteArray(writer, item.Value); break;
+            case NbtIntArray item: AppendIntArray(writer, item.Value); break;
+            case NbtLongArray item: AppendLongArray(writer, item.Value); break;
             default: throw new NotSupportedException($"Unknown NBT DOM type {element.GetType()}.");
         }
     }
 
-    private static void AppendInteger(StringBuilder builder, long value, string suffix)
-        => builder.Append(value.ToString(CultureInfo.InvariantCulture)).Append(suffix);
-
-    private static void AppendList(StringBuilder builder, NbtList list, SnbtOptions options)
+    /// <summary>Writes an integer in the invariant culture, optionally followed by a type suffix.</summary>
+    private static void AppendInteger(TextWriter writer, long value, char suffix = '\0')
     {
-        builder.Append('[');
-        for (int index = 0; index < list.Count; index++)
-        {
-            if (index > 0) builder.Append(',');
-            Append(builder, list[index], options);
-        }
+        Span<char> buffer = stackalloc char[24];
+        if (!value.TryFormat(buffer, out int written, default, CultureInfo.InvariantCulture))
+            throw new InvalidOperationException($"Unable to format the integer {value}.");
 
-        builder.Append(']');
+        writer.Write(buffer[..written]);
+        if (suffix != '\0') writer.Write(suffix);
     }
 
-    private static void AppendCompound(StringBuilder builder, NbtCompound compound, SnbtOptions options)
+    private static void AppendList(TextWriter writer, NbtList list, SnbtOptions options)
     {
-        builder.Append('{');
+        writer.Write('[');
+        for (int index = 0; index < list.Count; index++)
+        {
+            if (index > 0) writer.Write(',');
+            AppendElement(writer, list[index], options);
+        }
+
+        writer.Write(']');
+    }
+
+    private static void AppendCompound(TextWriter writer, NbtCompound compound, SnbtOptions options)
+    {
+        writer.Write('{');
         bool first = true;
         foreach ((string key, NbtElement value) in compound)
         {
-            if (!first) builder.Append(',');
+            if (!first) writer.Write(',');
             first = false;
-            builder.Append(FormatString(key)).Append(':');
-            Append(builder, value, options);
+            AppendString(writer, key);
+            writer.Write(':');
+            AppendElement(writer, value, options);
         }
 
-        builder.Append('}');
+        writer.Write('}');
     }
 
-    private static void AppendByteArray(StringBuilder builder, byte[] values)
+    private static void AppendByteArray(TextWriter writer, byte[] values)
     {
-        builder.Append("[B;");
+        writer.Write("[B;");
         for (int index = 0; index < values.Length; index++)
         {
-            if (index > 0) builder.Append(',');
-            AppendInteger(builder, unchecked((sbyte)values[index]), "b");
+            if (index > 0) writer.Write(',');
+            AppendInteger(writer, unchecked((sbyte)values[index]), 'b');
         }
 
-        builder.Append(']');
+        writer.Write(']');
     }
 
-    private static void AppendIntArray(StringBuilder builder, int[] values)
+    private static void AppendIntArray(TextWriter writer, int[] values)
     {
-        builder.Append("[I;");
+        writer.Write("[I;");
         for (int index = 0; index < values.Length; index++)
         {
-            if (index > 0) builder.Append(',');
-            builder.Append(values[index].ToString(CultureInfo.InvariantCulture));
+            if (index > 0) writer.Write(',');
+            AppendInteger(writer, values[index]);
         }
 
-        builder.Append(']');
+        writer.Write(']');
     }
 
-    private static void AppendLongArray(StringBuilder builder, long[] values)
+    private static void AppendLongArray(TextWriter writer, long[] values)
     {
-        builder.Append("[L;");
+        writer.Write("[L;");
         for (int index = 0; index < values.Length; index++)
         {
-            if (index > 0) builder.Append(',');
-            AppendInteger(builder, values[index], "L");
+            if (index > 0) writer.Write(',');
+            AppendInteger(writer, values[index], 'L');
         }
 
-        builder.Append(']');
+        writer.Write(']');
     }
 
-    private static string FormatFloat(float value, SnbtOptions options)
+    private static void AppendFloat(TextWriter writer, float value, SnbtOptions options)
     {
-        if (float.IsNaN(value)) return "NaN";
-        if (float.IsPositiveInfinity(value)) return "Infinity";
-        if (float.IsNegativeInfinity(value)) return "-Infinity";
+        if (float.IsNaN(value)) { AppendSpecialFloat(writer, "NaN", 'f'); return; }
+        if (float.IsPositiveInfinity(value)) { AppendSpecialFloat(writer, "Infinity", 'f'); return; }
+        if (float.IsNegativeInfinity(value)) { AppendSpecialFloat(writer, "-Infinity", 'f'); return; }
 
-        string text = value.ToString("R", CultureInfo.InvariantCulture);
-        if (!options.AllowScientificNotation) text = ExpandExponent(text);
-        return NeedsDecimalPoint(text) ? text + ".0" : text;
+        Span<char> buffer = stackalloc char[32];
+        if (!value.TryFormat(buffer, out int written, "R", CultureInfo.InvariantCulture))
+            throw new InvalidOperationException($"Unable to format the float {value}.");
+
+        AppendFloatLiteral(writer, buffer[..written], options);
+        writer.Write('f');
     }
 
-    private static string FormatDouble(double value, SnbtOptions options)
+    private static void AppendDouble(TextWriter writer, double value, SnbtOptions options)
     {
-        if (double.IsNaN(value)) return "NaN";
-        if (double.IsPositiveInfinity(value)) return "Infinity";
-        if (double.IsNegativeInfinity(value)) return "-Infinity";
+        if (double.IsNaN(value)) { AppendSpecialFloat(writer, "NaN", 'd'); return; }
+        if (double.IsPositiveInfinity(value)) { AppendSpecialFloat(writer, "Infinity", 'd'); return; }
+        if (double.IsNegativeInfinity(value)) { AppendSpecialFloat(writer, "-Infinity", 'd'); return; }
 
-        string text = value.ToString("R", CultureInfo.InvariantCulture);
-        if (!options.AllowScientificNotation) text = ExpandExponent(text);
-        return NeedsDecimalPoint(text) ? text + ".0" : text;
+        Span<char> buffer = stackalloc char[32];
+        if (!value.TryFormat(buffer, out int written, "R", CultureInfo.InvariantCulture))
+            throw new InvalidOperationException($"Unable to format the double {value}.");
+
+        AppendFloatLiteral(writer, buffer[..written], options);
+        writer.Write('d');
+    }
+
+    private static void AppendSpecialFloat(TextWriter writer, string text, char suffix)
+    {
+        writer.Write(text);
+        writer.Write(suffix);
+    }
+
+    /// <summary>Writes the body of a floating-point literal, followed by nothing: the caller writes the suffix.</summary>
+    private static void AppendFloatLiteral(TextWriter writer, ReadOnlySpan<char> text, SnbtOptions options)
+    {
+        int marker = text.IndexOfAny('E', 'e');
+
+        if (marker >= 0 && !options.AllowScientificNotation)
+        {
+            AppendPlainDecimal(writer, text, marker);
+            return;
+        }
+
+        writer.Write(text);
+        if (marker < 0 && text.IndexOf('.') < 0) writer.Write(".0");
     }
 
     /// <summary>
-    /// Rewrites an <c>E</c>-notation literal as an equivalent plain decimal literal, for dialects that do not
+    /// Writes an <c>E</c>-notation literal as an equivalent plain decimal literal, for dialects that do not
     /// accept an exponent. The digits are moved rather than the value re-formatted, so the round-trip fidelity
     /// of the shortest round-trippable representation is preserved exactly.
     /// </summary>
-    private static string ExpandExponent(string text)
+    private static void AppendPlainDecimal(TextWriter writer, ReadOnlySpan<char> text, int marker)
     {
-        int marker = text.IndexOfAny(['E', 'e']);
-        if (marker < 0) return text;
-
         int exponent = int.Parse(text[(marker + 1)..], NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture);
 
-        string mantissa = text[..marker];
-        bool negative = mantissa.StartsWith('-');
-        if (negative) mantissa = mantissa[1..];
+        ReadOnlySpan<char> mantissa = text[..marker];
+        if (mantissa.StartsWith("-"))
+        {
+            writer.Write('-');
+            mantissa = mantissa[1..];
+        }
+
+        // The "R" format yields at most 17 significant digits, so the buffer always covers the mantissa.
+        Span<char> digits = stackalloc char[32];
+        int digitCount = 0;
+        for (int index = 0; index < mantissa.Length; index++)
+        {
+            if (mantissa[index] != '.') digits[digitCount++] = mantissa[index];
+        }
 
         int point = mantissa.IndexOf('.');
-        string digits = point < 0 ? mantissa : mantissa.Remove(point, 1);
         int integerLength = point < 0 ? mantissa.Length : point;
         int pointPosition = integerLength + exponent;
 
-        var builder = new StringBuilder(digits.Length + Math.Abs(exponent) + 3);
-        if (negative) builder.Append('-');
-
         if (pointPosition <= 0)
         {
-            builder.Append("0.").Append('0', -pointPosition).Append(digits);
+            writer.Write("0.");
+            WriteZeroes(writer, -pointPosition);
+            writer.Write(digits[..digitCount]);
         }
-        else if (pointPosition >= digits.Length)
+        else if (pointPosition >= digitCount)
         {
-            builder.Append(digits).Append('0', pointPosition - digits.Length);
+            writer.Write(digits[..digitCount]);
+            WriteZeroes(writer, pointPosition - digitCount);
+            writer.Write(".0");
         }
         else
         {
-            builder.Append(digits, 0, pointPosition).Append('.').Append(digits, pointPosition, digits.Length - pointPosition);
+            writer.Write(digits[..pointPosition]);
+            writer.Write('.');
+            writer.Write(digits[pointPosition..digitCount]);
         }
-
-        return builder.ToString();
     }
 
-    private static bool NeedsDecimalPoint(string text)
-        => text.IndexOf('.') < 0 && text.IndexOf('E') < 0 && text.IndexOf('e') < 0;
-
-    private static string FormatString(string value)
+    private static void WriteZeroes(TextWriter writer, int count)
     {
-        if (CanWriteBare(value)) return value;
-        if (value.IndexOf('"') >= 0 && value.IndexOf('\'') < 0 && !HasControlCharacter(value)) return FormatSingleQuoted(value);
-        return FormatDoubleQuoted(value);
+        while (count > 0)
+        {
+            int chunk = Math.Min(count, Zeroes.Length);
+            writer.Write(Zeroes.AsSpan(0, chunk));
+            count -= chunk;
+        }
+    }
+
+    private static void AppendString(TextWriter writer, string value)
+    {
+        if (CanWriteBare(value))
+        {
+            writer.Write(value);
+            return;
+        }
+
+        if (value.IndexOf('"') >= 0 && value.IndexOf('\'') < 0 && !HasControlCharacter(value))
+        {
+            writer.Write('\'');
+            foreach (char character in value)
+            {
+                if (character is '\'' or '\\') writer.Write('\\');
+                writer.Write(character);
+            }
+
+            writer.Write('\'');
+            return;
+        }
+
+        writer.Write('"');
+        foreach (char character in value)
+        {
+            switch (character)
+            {
+                case '"': writer.Write("\\\""); break;
+                case '\\': writer.Write("\\\\"); break;
+                case '\n': writer.Write("\\n"); break;
+                case '\t': writer.Write("\\t"); break;
+                case '\r': writer.Write("\\r"); break;
+                default:
+                    if (character < ' ')
+                    {
+                        writer.Write("\\u");
+                        writer.Write(((int)character).ToString("x4", CultureInfo.InvariantCulture));
+                    }
+                    else
+                    {
+                        writer.Write(character);
+                    }
+
+                    break;
+            }
+        }
+
+        writer.Write('"');
     }
 
     private static bool CanWriteBare(string value)
@@ -252,39 +356,5 @@ public static class SnbtWriter
         }
 
         return false;
-    }
-
-    private static string FormatSingleQuoted(string value)
-    {
-        var builder = new StringBuilder(value.Length + 2).Append('\'');
-        foreach (char character in value)
-        {
-            if (character is '\'' or '\\') builder.Append('\\');
-            builder.Append(character);
-        }
-
-        return builder.Append('\'').ToString();
-    }
-
-    private static string FormatDoubleQuoted(string value)
-    {
-        var builder = new StringBuilder(value.Length + 2).Append('"');
-        foreach (char character in value)
-        {
-            switch (character)
-            {
-                case '"': builder.Append("\\\""); break;
-                case '\\': builder.Append("\\\\"); break;
-                case '\n': builder.Append("\\n"); break;
-                case '\t': builder.Append("\\t"); break;
-                case '\r': builder.Append("\\r"); break;
-                default:
-                    if (character < ' ') builder.Append("\\u").Append(((int)character).ToString("x4", CultureInfo.InvariantCulture));
-                    else builder.Append(character);
-                    break;
-            }
-        }
-
-        return builder.Append('"').ToString();
     }
 }

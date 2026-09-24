@@ -117,9 +117,11 @@ binds to them through the built-in implicit conversion and no intermediate copy 
 `TextReader` overloads cover streams. SNBT has no root tag name, so `ParseDocument` returns a
 document whose `RootTagName` is `string.Empty`. `SnbtWriter` emits compact single-line output:
 byte/short/long literals carry their `b`/`s`/`L` suffixes, floating point uses `"R"` round-trip
-formatting followed by `f`/`d`, and strings stay bare unless quoting is required. Every overload has a
-counterpart that takes an `SnbtOptions` value; `SnbtWriter.Write(element, SnbtOptions.v1_13)` therefore
-produces text the classic dialect can read back.
+formatting followed by `f`/`d`, and strings stay bare unless quoting is required. `SnbtWriter.Write(TextWriter, ...)`
+streams the tree element by element and never materializes the whole document as a string; the `string`
+overloads collect the same writes in a `StringWriter`. Every overload has a counterpart that takes an
+`SnbtOptions` value; `SnbtWriter.Write(element, SnbtOptions.v1_13)` therefore produces text the classic
+dialect can read back.
 
 ### Dialects
 

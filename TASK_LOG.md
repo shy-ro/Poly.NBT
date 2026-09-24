@@ -1,5 +1,40 @@
 # Task Log
 
+## 2026-09-25 - Stream SnbtWriter output to TextWriter
+
+### Scope
+
+Make the `TextWriter` overloads honor a streaming contract: writing a document must no longer build the
+complete string first.
+
+### Actual Changes
+
+- Replaced the `StringBuilder` implementation with a recursive `AppendElement(TextWriter, ...)`. Every
+  bracket, separator, scalar, and type suffix reaches the target writer as soon as it is produced.
+- Integers are formatted into a `stackalloc char[24]` buffer with `long.TryFormat` and the invariant culture,
+  so the result never depends on the culture of the caller's `TextWriter`.
+- Floats and doubles are formatted into `stackalloc char[32]` buffers. Exponent expansion streams as well:
+  digits are written directly and leading or trailing zero runs come from a shared 400-character padding, so
+  `v1_13` output no longer allocates an intermediate literal.
+- Strings are written character by character, emitting escape sequences as they are encountered.
+- Kept the `string` overloads as convenience wrappers over a `StringWriter`. Every public signature and the
+  produced text are unchanged, which is why the pre-existing writer tests passed untouched.
+- Added `SnbtWriterStreamingTests` using a recording `TextWriter` that captures every write: the document is
+  reassembled from many separate writes, no single write holds the whole document, a scalar arrives as digits
+  and suffix separately, and an expanded decimal never appears as one literal.
+
+### Verification
+
+- `dotnet build Poly.NBT.slnx --no-restore`: 0 warnings, 0 errors.
+- `dotnet test Poly.NBT.slnx --no-restore`: 118/118 passed (previously 114).
+- `dotnet format Poly.NBT.slnx --no-restore --verify-no-changes --severity warn`: passed.
+- `git diff --check`: passed.
+
+### Known Issues and Next
+
+- `AppendString` issues one write per character for quoted strings. That follows directly from the streaming
+  contract; batching would be faster but would reintroduce a per-string allocation.
+
 ## 2026-09-25 - Use ReadOnlySpan<char> in SNBT parser and lexer
 
 ### Scope
