@@ -75,12 +75,19 @@ internal static class StreamIO
     }
 }
 
+/// <summary>Reads and writes Minecraft's LEB128 varints, which are little-endian and 7 bits per group.</summary>
+/// <remarks>
+/// Every malformed shape raises <see cref="FormatException"/> rather than an arithmetic overflow: the bytes
+/// come from the wire, so "this encoding does not fit the target width" is bad data, not a library fault.
+/// </remarks>
 internal static class VarInt
 {
     public static uint ReadUInt32(Stream stream)
     {
         ulong value = Read(stream, 5);
-        return checked((uint)value);
+        return value <= uint.MaxValue
+            ? (uint)value
+            : throw new FormatException("The encoded VarInt does not fit in 32 bits.");
     }
 
     public static ulong ReadUInt64(Stream stream) => Read(stream, 10);
@@ -103,7 +110,17 @@ internal static class VarInt
                 throw new EndOfStreamException();
             }
 
-            result |= (ulong)(current & 0x7f) << (index * 7);
+            int shift = index * 7;
+            ulong payload = (ulong)(current & 0x7f);
+
+            // The last group of a maximum-length encoding can carry bits that the target width cannot hold;
+            // a well-formed encoding leaves them clear. Shifting them in would drop them silently.
+            if (shift >= 64 || payload > (ulong.MaxValue >> shift))
+            {
+                throw new FormatException("The encoded VarInt does not fit in 64 bits.");
+            }
+
+            result |= payload << shift;
             if ((current & 0x80) == 0)
             {
                 return result;

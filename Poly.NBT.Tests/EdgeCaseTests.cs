@@ -109,6 +109,24 @@ public sealed class EdgeCaseTests
     }
 
     [Fact]
+    public void VarIntsWiderThanTheTargetAreRejectedAsBadData()
+    {
+        // Five groups carry 35 bits and ten carry 70, so both widths can be over-encoded by a hostile
+        // document. That has to read as malformed data; the old fixed-width cast reported OverflowException,
+        // which looks like a library fault, and the old unconditional shift dropped the extra bits silently.
+        NbtSerializer serializer = NbtSerializer.Create(NbtOptions.BedrockNetworkEdition);
+
+        Assert.Throws<FormatException>(() => serializer.DeserializeUsingReflection<int>([3, 0xff, 0xff, 0xff, 0xff, 0x7f]));
+        Assert.Throws<FormatException>(() => serializer.DeserializeUsingReflection<long>(
+            [4, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x7f]));
+
+        // The widest legal encoding of each width still decodes, to that width's minimum value.
+        Assert.Equal(int.MinValue, serializer.DeserializeUsingReflection<int>([3, 0xff, 0xff, 0xff, 0xff, 0x0f]));
+        Assert.Equal(long.MinValue, serializer.DeserializeUsingReflection<long>(
+            [4, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x01]));
+    }
+
+    [Fact]
     public void InvalidModifiedUtf8IsRejected()
     {
         NbtSerializer serializer = NbtSerializer.Create(NbtOptions.JavaNetworkEdition);

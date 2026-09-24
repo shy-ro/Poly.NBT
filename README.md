@@ -115,6 +115,21 @@ reject streams larger than a fixed number of bytes before handing them to `NbtSe
 `NbtAccounter` solves the same problem with running total accounting; `MaxCollectionLength` is the
 per-value equivalent.
 
+### Malformed input
+
+Three exception types divide the ways a document can be wrong, so a caller can tell bad bytes from bytes it
+is not configured to accept:
+
+| Exception | Meaning |
+|:---|:---|
+| `FormatException` | The bytes are structurally invalid: an unknown tag type, a negative length, a Modified UTF-8 sequence that is not well-formed, or a VarInt that does not fit its target width. |
+| `InvalidDataException` | The bytes are structurally valid but break a rule — a configured limit such as `MaxDepth` or `MaxCollectionLength`, a heterogeneous `TAG_List`, a missing root value. |
+| `EndOfStreamException` | The document is truncated. A short collection stays in this category rather than being reported as oversized. |
+
+A VarInt encoding wider than its target is deliberately counted as malformed rather than allowed to
+truncate: five groups encode 35 bits, so a hostile `TAG_Int` can carry a value that does not fit in 32, and
+silently keeping the low bits would invent a value the sender never wrote.
+
 ### PolyType attributes
 ```csharp
 [GenerateShape]

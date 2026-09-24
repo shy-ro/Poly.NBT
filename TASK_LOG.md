@@ -1,5 +1,51 @@
 # Task Log
 
+## 2026-09-25 - Report over-wide VarInts as bad data
+
+### Scope
+
+Fix the audit's P2-4. Minecraft's VarInt is 7 bits per group, so five groups carry 35 bits and ten carry 70.
+Both widths can therefore be over-encoded by a hostile or corrupt document, and the reader did the wrong
+thing with the extra bits in both cases.
+
+| Payload | Tag | Before | After |
+|:---|:---|:---|:---|
+| `03 FFFFFFFF7F` | `TAG_Int` | `OverflowException` from the fixed-width cast | `FormatException` |
+| `04 FF x9 7F` | `TAG_Long` | extra bits dropped silently, wrong value returned | `FormatException` |
+
+### Actual Changes
+
+- `VarInt.ReadUInt32` no longer casts with `checked`. The value is compared against `uint.MaxValue` and
+  rejected as `FormatException` when it does not fit. The old `OverflowException` reads as a library fault
+  when the actual fault is the input.
+- `VarInt.Read` now checks each group against the bits the target width can still hold before shifting it in.
+  The 32-bit case was already covered by the read returning `ulong`, but the 64-bit case shifted the tenth
+  group by 63 and discarded everything above bit 0 silently, so an over-wide `VarLong` used to decode to a
+  fabricated value instead of failing.
+- Documented the class: every malformed shape raises `FormatException`.
+- New `VarIntsWiderThanTheTargetAreRejectedAsBadData` covers both widths, and asserts that the widest *legal*
+  encoding of each width still decodes - to `int.MinValue` and `long.MinValue`, which is what ZigZag makes of
+  an all-ones payload.
+- Added a README "Malformed input" section stating the exception contract the whole reader follows:
+  `FormatException` for structurally invalid bytes, `InvalidDataException` for bytes that break a configured
+  rule or a shape constraint, and `EndOfStreamException` for truncation.
+
+### Verification
+
+- `dotnet build Poly.NBT.slnx --no-restore`: 0 warnings, 0 errors.
+- `dotnet test Poly.NBT.slnx --no-restore`: 142/142 passed (previously 141).
+- `dotnet format Poly.NBT.slnx --no-restore --verify-no-changes --severity warn`: passed.
+- Audit probe 5: `03FFFFFFFF7F` now reports `FormatException` instead of `OverflowException`; the valid
+  encodings around it are unchanged.
+
+### Known Issues and Next
+
+- The `long` case now rejects rather than truncating, which is a behavior change for anyone who relied on the
+  old silent truncation. That was never a defined behavior and no caller can have wanted the fabricated
+  value, so it is treated as a bug fix rather than a break.
+- Still to come from the audit: the SNBT escape set and bare-string rules (P1-3, P1-4), the float exponent
+  format (P1-5), and the P2/P3 list.
+
 ## 2026-09-25 - Always write the root name field in a named dialect
 
 ### Scope
