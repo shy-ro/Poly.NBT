@@ -1,5 +1,49 @@
 # Task Log
 
+## 2026-09-24 - Add SNBT parser and writer
+
+### Scope
+
+Add `Poly.NBT.Snbt`, a text-only conversion layer between the SNBT format and `NbtElement`, with a
+complete lexer, parser, and writer plus the `v1_13` and `v1_21_5` dialect presets.
+
+### Actual Changes
+
+- Added `SnbtOptions` (`readonly record struct`) with the nine 1.21.5 extension flags and the
+  `v1_13` / `v1_21_5` presets; no `default` preset is provided.
+- Added `SnbtParseException : FormatException` carrying the zero-based character `Offset`.
+- Added `SnbtLexer` for character scanning and quoted-string decoding using the dialect-independent
+  escape set (`\"`, `\\`, `\n`, `\t`, `\r`, `\uXXXX`); single-quoted strings allow only `\'` and `\\`.
+- Added `SnbtNumbers` (two partial files) covering decimal, hexadecimal, and binary literals,
+  underscores, `E` notation, omitted float parts, `NaN`/`Infinity`, signedness suffixes, range
+  checks, and overflow rejection; the `i`/`I` integer suffix is rejected.
+- Added `SnbtParser` with `Parse`/`ParseDocument` overloads for `TextReader` and `string`, a
+  parameterless modern-dialect path, compound/list/array parsing, duplicate-key rejection, the
+  `bool(...)` and `uuid(...)` operations, and typed arrays that ignore mismatched element suffixes.
+- Added `SnbtWriter` with bare-string-first quoting, `"R"` invariant floating-point formatting,
+  type suffixes, insertion-ordered compounds, and compact single-line output.
+- Added 41 SNBT tests across `SnbtParserTests`, `SnbtDialectTests`, `SnbtWriterTests`, and
+  `SnbtErrorTests`; the suite now contains 106 tests.
+- Documented the SNBT surface and its dialect matrix in `README.md`.
+
+### Verification
+
+- `dotnet build Poly.NBT.slnx --no-restore`: passed with 0 warnings and 0 errors.
+- `dotnet test Poly.NBT.slnx --no-build --no-restore`: passed, 106/106 tests.
+- `dotnet format Poly.NBT.slnx --no-restore --verify-no-changes --severity warn`: passed.
+- `git diff --check`: passed.
+
+### Known Issues and Next
+
+- The 1.21.5 number format is implemented from the published grammar but has not been diffed against
+  a live Minecraft build; the `0xA3sb` example on the Minecraft Wiki exceeds the signed byte range
+  and is rejected here, matching the documented `253sb` rejection.
+- `SnbtWriter` has no dialect parameter, so `v1_13` cannot re-read its own output for values such as
+  `1E+20d`, which that dialect disallows.
+- SNBT arrays accept only integer-typed literals; fractional literals inside `[B; ...]` are errors.
+
+Planned commit subject: `Add SNBT parser and writer`
+
 ## 2026-09-19 - Add object and DOM bridge helpers
 
 ### Scope

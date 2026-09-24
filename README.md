@@ -12,6 +12,7 @@ PolyType-based, Native AOT-friendly serialization for the Java and Bedrock NBT w
 | Converters | Primitives, arrays, collections, dictionaries, objects, `Nullable<T>`, surrogates, enums, DOM, `object` | — |
 | DOM | `NbtElement` and 12 tag types, `NbtList.TryToArray`, `NbtDocument` | `ToElement` / `FromElement` bridge |
 | API | `Serialize`, `Deserialize`, `SerializeUsingReflection`, `DeserializeUsingReflection`, `DeserializeDocument` | Async API |
+| SNBT | `SnbtParser`, `SnbtWriter`, `SnbtOptions` (`v1_13` and `v1_21_5` dialects) | — |
 | Polymorphism | — | Union and derived-type serialization |
 | BCL types | — | Built-in marshalers for `decimal`, `Guid`, `DateTime`, `DateTimeOffset` |
 
@@ -98,6 +99,44 @@ public readonly partial record struct Point(int X, int Y);
 ```
 
 See the [PolyType documentation](https://github.com/eiriktsarpalis/PolyType) for the full attribute surface.
+
+## SNBT text
+
+`Poly.NBT.Snbt` converts between the SNBT text format and the `NbtElement` DOM. It depends only on
+`Poly.NBT.Dom`; it never touches the binary serializer or PolyType.
+
+```csharp
+NbtElement element = SnbtParser.Parse("{name:Bananrama,Health:20b,Pos:[1.0d,2.0d,3.0d]}");
+string text = SnbtWriter.Write(element);
+NbtDocument document = SnbtParser.ParseDocument(new StringReader(text));
+```
+
+`SnbtParser.Parse` reads exactly one value and throws `SnbtParseException` (carrying the character
+`Offset` of the failure) on malformed input. SNBT has no root tag name, so `ParseDocument` returns a
+document whose `RootTagName` is `string.Empty`. `SnbtWriter` emits compact single-line output:
+byte/short/long literals carry their `b`/`s`/`L` suffixes, floating point uses `"R"` round-trip
+formatting followed by `f`/`d`, and strings stay bare unless quoting is required.
+
+### Dialects
+
+`SnbtOptions` selects the accepted grammar. Each flag mirrors a syntax extension introduced by
+Minecraft 1.21.5; `v1_13` disables every one of them and `v1_21_5` enables every one of them.
+
+| Option | v1_13 | v1_21_5 |
+|:---|:---:|:---:|
+| `AllowTrailingCommas` | No | Yes |
+| `AllowHeterogeneousLists` | No | Yes |
+| `AllowScientificNotation` | No | Yes |
+| `AllowBinaryAndHexLiterals` | No | Yes |
+| `AllowOmittedFloatParts` | No | Yes |
+| `AllowBooleanLiterals` | No | Yes |
+| `AllowUnderscoreSeparators` | No | Yes |
+| `AllowSignednessSuffixes` | No | Yes |
+| `AllowSnbtOperations` (`bool(...)`, `uuid(...)`) | No | Yes |
+
+The parameterless parser overloads use `SnbtOptions.v1_21_5`; there is deliberately no `default`
+preset. `NaN`/`Infinity` literals, the rejection of `i`/`I` integer suffixes, string-key compound
+rules, and typed-array suffix handling are dialect-independent.
 
 ## Limitations
 
