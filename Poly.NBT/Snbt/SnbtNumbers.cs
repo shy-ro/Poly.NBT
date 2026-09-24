@@ -95,8 +95,9 @@ internal static partial class SnbtNumbers
 
         if (type is NbtTagType.End) return Invalid("Hexadecimal and binary literals must be integers ('b', 's', or 'L' suffixes only).", out error);
 
-        // Radix-prefixed values default to unsigned when no signedness suffix is present.
-        return StoreInteger(magnitude, negative, unsignedSuffix ?? true, type, token, out value, out error);
+        // Radix-prefixed values default to unsigned when no signedness suffix is present, but a leading minus
+        // sign selects the signed form: -0xFF is -255 rather than an error about an unsigned literal.
+        return StoreInteger(magnitude, negative, unsignedSuffix ?? !negative, type, token, out value, out error);
     }
 
     private static SnbtNumberStatus StoreInteger(ulong magnitude, bool negative, bool unsigned, NbtTagType type, string token, out NbtElement? value, out string? error)

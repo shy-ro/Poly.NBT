@@ -48,6 +48,22 @@ public sealed class SnbtParserTests
     }
 
     [Fact]
+    public void ParsesNegativeRadixLiterals()
+    {
+        Assert.Equal(new NbtInt(-255), SnbtParser.Parse("-0xFF"));
+        Assert.Equal(new NbtInt(-5), SnbtParser.Parse("-0b101"));
+        Assert.Equal(new NbtLong(-2989L), SnbtParser.Parse("-0xbadL"));
+        Assert.Equal(new NbtInt(int.MinValue), SnbtParser.Parse("-0x80000000"));
+        Assert.Equal(new NbtLong(long.MinValue), SnbtParser.Parse("-0x8000000000000000L"));
+
+        // A signed suffix narrows the accepted range rather than changing the reading: -0x11sb is -17.
+        Assert.Equal(new NbtByte(-17), SnbtParser.Parse("-0x11sb"));
+
+        // A leading '+' keeps the unsigned default for a radix literal.
+        Assert.Equal(new NbtInt(255), SnbtParser.Parse("+0xFF"));
+    }
+
+    [Fact]
     public void ParsesUnderscoreSeparators()
     {
         Assert.Equal(new NbtInt(1000), SnbtParser.Parse("1_000"));

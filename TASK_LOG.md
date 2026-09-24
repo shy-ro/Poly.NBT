@@ -1,5 +1,30 @@
 # Task Log
 
+## 2026-09-25 - Accept negative radix literals in SNBT
+
+### Scope
+
+Make a leading minus sign select the signed reading of a hexadecimal or binary literal instead of being
+rejected as "the unsigned literal cannot be negative".
+
+### Actual Changes
+
+- `SnbtNumbers.ParseBased` now passes `unsignedSuffix ?? !negative` to `StoreInteger`. Radix literals still
+  default to unsigned, but `-0xFF` is the signed `-255`. The default for decimal literals is unchanged.
+- Kept an explicit signedness suffix authoritative, which preserves the documented range semantics:
+  `-0xFFub` is still rejected because an unsigned literal cannot be negative, and `-0xFFsb` is rejected
+  because -255 does not fit a signed byte. Byte-sized hex values remain expressible, e.g. `-0x11sb` is -17,
+  which matches the wiki rule that byte-sized hex literals must carry a signed suffix and that the suffix
+  only narrows the parsed range.
+- Added `ParsesNegativeRadixLiterals` covering `-0xFF`, `-0b101`, `-0xbadL`, `-0x80000000`,
+  `-0x8000000000000000L`, `-0x11sb`, and `+0xFF`, plus error assertions for `-0xFFub`, `-0xFFsb`, and
+  `-0x80000001`.
+
+### Verification
+
+- `dotnet build Poly.NBT.slnx --no-restore`: 0 warnings, 0 errors.
+- `dotnet test Poly.NBT.slnx --no-restore`: 113/113 passed (previously 112).
+
 ## 2026-09-25 - Fix SnbtOptions documentation for version provenance
 
 ### Scope

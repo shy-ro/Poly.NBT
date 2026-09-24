@@ -26,6 +26,12 @@ public sealed class SnbtErrorTests
         Assert.Equal(0, Offset("1e1000"));
         Assert.Equal(0, Offset("0x"));
         Assert.Equal(0, Offset("0123"));
+
+        // A minus sign selects the signed form, so only unsigned suffixes still reject it, and the signed form
+        // keeps its range check: -255 does not fit a signed byte.
+        Assert.Equal(0, Offset("-0xFFub"));
+        Assert.Equal(0, Offset("-0xFFsb"));
+        Assert.Equal(0, Offset("-0x80000001"));
     }
 
     [Fact]
