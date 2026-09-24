@@ -103,15 +103,32 @@ public sealed record NbtList : NbtElement, IReadOnlyList<NbtElement>
     }
 }
 
+/// <summary>An NBT compound: a string-keyed map of elements that preserves insertion order.</summary>
+/// <remarks>
+/// <para>
+/// Enumeration follows insertion order, and that order is part of the contract rather than an artifact of the
+/// backing collection. Both of this type's consumers depend on it: <see cref="Snbt.SnbtWriter"/> emits
+/// properties in enumeration order, so the order decides the text, and the binary writer emits them in
+/// enumeration order, so it decides the bytes. A plain <see cref="Dictionary{TKey,TValue}"/> happens to
+/// enumerate in insertion order while nothing is removed, but that is not documented and not promised, so the
+/// backing store is a <see cref="OrderedDictionary{TKey,TValue}"/>, which guarantees it.
+/// </para>
+/// <para>
+/// Order does not affect value equality. <see cref="Equals(NbtCompound?)"/> compares key by key and
+/// <see cref="GetHashCode"/> hashes the entries in sorted key order, so two compounds with the same entries in
+/// different orders are equal, as NBT's own semantics require.
+/// </para>
+/// </remarks>
 public sealed record NbtCompound : NbtElement, IReadOnlyDictionary<string, NbtElement>
 {
     private readonly IReadOnlyDictionary<string, NbtElement> _entries;
 
     public NbtCompound(IEnumerable<KeyValuePair<string, NbtElement>> entries)
-        => _entries = entries?.ToDictionary(StringComparer.Ordinal) ?? throw new ArgumentNullException(nameof(entries));
+        => _entries = new OrderedDictionary<string, NbtElement>(
+            entries ?? throw new ArgumentNullException(nameof(entries)), StringComparer.Ordinal);
 
     public NbtCompound(params ReadOnlySpan<KeyValuePair<string, NbtElement>> entries)
-        => _entries = entries.ToArray().ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
+        => _entries = new OrderedDictionary<string, NbtElement>(entries.ToArray(), StringComparer.Ordinal);
     public int Count => _entries.Count;
     public IEnumerable<string> Keys => _entries.Keys;
     public IEnumerable<NbtElement> Values => _entries.Values;

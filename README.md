@@ -268,6 +268,7 @@ same value, which the tests assert rather than assume.
 - **Root values cannot be `null`.** `Serialize` throws `InvalidDataException` if the root value is absent.
 - **List elements cannot be `null`.** NBT has no null representation. `null` elements throw `InvalidDataException` at write time, regardless of whether `OptimizePrimitiveListsToArrays` is enabled.
 - **Dictionary keys must be `string`.** Any other key type throws `NotSupportedException` during converter construction.
+- **`NbtCompound` preserves insertion order.** `Keys`, `Values`, and enumeration follow insertion order, and that order decides both the SNBT text and the wire bytes, so it is documented rather than left to the backing collection. Equality and hashing are order-independent, matching NBT's own unordered-map semantics: two compounds with the same entries in different orders are equal.
 - **Enums map to the smallest integer tag for their underlying type.** `byte`/`sbyte` → `TAG_Byte`, `short`/`ushort` → `TAG_Short`, `int`/`uint` → `TAG_Int`, `long`/`ulong` → `TAG_Long`. No string-based names are emitted.
 - **`NbtSerializer.Create` requires explicit options.** There is no parameterless overload.
 - **AOT compatibility.** The library is marked `IsAotCompatible`. The reflection-based `SerializeUsingReflection` / `DeserializeUsingReflection` methods require dynamic code and are annotated `[RequiresUnreferencedCode]` / `[RequiresDynamicCode]`.

@@ -1,5 +1,44 @@
 # Task Log
 
+## 2026-09-25 - Make the compound key order a documented contract
+
+### Scope
+
+Fix the audit's P2-6. `NbtCompound` backed its entries with a `Dictionary<string, NbtElement>` and the order of
+`Keys`, `Values`, and enumeration was therefore an implementation detail - one that both consumers already
+depend on, because the SNBT writer emits properties in enumeration order and so does the binary writer. The
+current runtime happens to enumerate a `Dictionary` in insertion order while nothing is removed, so the
+behavior was right and unpromised.
+
+### Actual Changes
+
+- The backing store is now `System.Collections.Generic.OrderedDictionary<TKey,TValue>`, which documents
+  insertion order and keeps O(1) lookup. Both constructors keep their shape, their `StringComparer.Ordinal`
+  comparison, and their `ArgumentException` on a duplicate key.
+- `NbtCompound` gained a `<remarks>` block stating that enumeration order is part of the contract, naming both
+  consumers, and stating the counterpart rule: equality and hashing stay order-independent, so two compounds
+  with the same entries in different orders are equal, which is what NBT's unordered-map semantics require.
+- New `NbtCompoundOrderTests` pins all three claims: every construction route keeps the given order (including
+  the decode path, which builds its own dictionary while reading), order is observable in both the bytes and
+  the text while equality and hashing ignore it, and duplicate keys are still rejected.
+- README's Requirements list gained the same contract as a bullet.
+
+### Verification
+
+- `dotnet build Poly.NBT.slnx --no-restore`: 0 warnings, 0 errors.
+- `dotnet test Poly.NBT.slnx --no-restore`: 201/201 passed (previously 198).
+- `dotnet format Poly.NBT.slnx --no-restore --verify-no-changes --severity warn`: passed.
+- The audit's ordering probe already showed insertion order on every route; it is now a guarantee instead of an
+  observation.
+
+### Known Issues and Next
+
+- A `Dictionary` passed into the constructor still contributes its own enumeration order, which the new test
+  says explicitly. The compound does not reorder its input, and a caller who needs a specific order should pass
+  the entries in that order rather than rely on the dictionary.
+- Equality remains order-independent by design, so `NbtCompound` cannot be used to compare two documents for
+  byte-level identity. `Serialize` remains the way to do that.
+
 ## 2026-09-25 - Route DOM primitive arrays through the bulk I/O path
 
 ### Scope
