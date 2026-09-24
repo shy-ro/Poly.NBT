@@ -38,8 +38,8 @@ internal sealed class NbtElementConverter(NbtSerializer serializer) : NbtConvert
         NbtTagType.String => new NbtString(serializer.Strings.Read(stream)),
         NbtTagType.List => ReadList(stream, depth),
         NbtTagType.Compound => ReadCompound(stream, depth),
-        NbtTagType.IntArray => new NbtIntArray(ReadIntArray(stream, depth)),
-        NbtTagType.LongArray => new NbtLongArray(ReadLongArray(stream, depth)),
+        NbtTagType.IntArray => new NbtIntArray(ReadIntArray(stream)),
+        NbtTagType.LongArray => new NbtLongArray(ReadLongArray(stream)),
         _ => throw new InvalidDataException($"Tag type {actualType} has no DOM payload.")
     };
 
@@ -62,12 +62,12 @@ internal sealed class NbtElementConverter(NbtSerializer serializer) : NbtConvert
             case NbtCompound item: WriteCompound(stream, item, depth); break;
             case NbtIntArray item:
                 serializer.Lengths.WriteCollectionLength(stream, item.Value.Length);
-                foreach (int element in item.Value) serializer.Numeric.WriteInt32(stream, element);
+                FixedArrayIO.WriteInt32(stream, item.Value, serializer.Numeric);
                 break;
             case NbtLongArray item:
                 EnsureLongArray();
                 serializer.Lengths.WriteCollectionLength(stream, item.Value.Length);
-                foreach (long element in item.Value) serializer.Numeric.WriteInt64(stream, element);
+                FixedArrayIO.WriteInt64(stream, item.Value, serializer.Numeric);
                 break;
             case null: throw new InvalidDataException("NBT DOM values cannot be null.");
             default: throw new NotSupportedException($"Unknown NBT DOM type {value.GetType()}.");
@@ -118,19 +118,18 @@ internal sealed class NbtElementConverter(NbtSerializer serializer) : NbtConvert
         stream.WriteByte((byte)NbtTagType.End);
     }
 
-    private int[] ReadIntArray(Stream stream, int depth)
-    {
-        int[] result = new int[serializer.Lengths.ReadCollectionLength(stream)];
-        for (int index = 0; index < result.Length; index++) result[index] = serializer.Numeric.ReadInt32(stream);
-        return result;
-    }
+    // Arrays hold no nested tags, so unlike ReadList and ReadCompound these take no depth. They go through the
+    // same batch I/O the strongly typed converters use: a fixed-width dialect transfers the whole array with one
+    // ReadExactly or Write over MemoryMarshal.AsBytes, and only a VarInt dialect falls back to element by
+    // element. Reading an int array element by element cost about ten times as much and is what the audit
+    // measured.
+    private int[] ReadIntArray(Stream stream)
+        => FixedArrayIO.ReadInt32(stream, serializer.Lengths.ReadCollectionLength(stream), serializer.Numeric);
 
-    private long[] ReadLongArray(Stream stream, int depth)
+    private long[] ReadLongArray(Stream stream)
     {
         EnsureLongArray();
-        long[] result = new long[serializer.Lengths.ReadCollectionLength(stream)];
-        for (int index = 0; index < result.Length; index++) result[index] = serializer.Numeric.ReadInt64(stream);
-        return result;
+        return FixedArrayIO.ReadInt64(stream, serializer.Lengths.ReadCollectionLength(stream), serializer.Numeric);
     }
 
     private void EnsureLongArray()

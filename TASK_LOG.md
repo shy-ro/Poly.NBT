@@ -1,5 +1,54 @@
 # Task Log
 
+## 2026-09-25 - Route DOM primitive arrays through the bulk I/O path
+
+### Scope
+
+Fix the audit's P2-2. `NbtElementConverter` wrote `TAG_Int_Array` and `TAG_Long_Array` element by element
+through `Numeric.WriteInt32`/`WriteInt64`, while `FixedArrayIO` already implemented the bulk path the strongly
+typed converters use: one `Write` over `MemoryMarshal.AsBytes`, plus an `ArrayPool` byte-swap only when the
+dialect's byte order disagrees with the machine's. The DOM path is the one a caller reaches through
+`NbtDocument`, `Serialize(NbtDocument)`, and the SNBT round trip, so it was the slow one for the same data.
+
+| Path | Before | After |
+|:---|:---|:---|
+| DOM `int[100k]` write | 2.37 ms/op | 0.24 ms/op |
+| typed `int[100k]` write | 0.24 ms/op | 0.24 ms/op |
+| DOM `long[100k]` write | 2.52 ms/op | 0.31 ms/op |
+| typed `long[100k]` write | 0.30 ms/op | 0.31 ms/op |
+| DOM `int[100k]` read | - | 0.13 ms/op |
+| typed `int[100k]` read | - | 0.10 ms/op |
+
+### Actual Changes
+
+- `NbtElementConverter`'s `NbtIntArray` and `NbtLongArray` write cases call `FixedArrayIO.WriteInt32` /
+  `WriteInt64`, and `ReadIntArray` / `ReadLongArray` call `FixedArrayIO.ReadInt32` / `ReadInt64`. Both helpers
+  already branch on the numeric codec, so a VarInt dialect keeps its element-by-element fallback and a
+  fixed-width dialect gets one transfer.
+- `ReadIntArray` and `ReadLongArray` lost their unused `depth` parameter. Arrays hold no nested tags, so unlike
+  `ReadList` and `ReadCompound` they are not part of the recursion; the parameter only looked like it was.
+- New `DomAndTypedPrimitiveArraysAgreeOnTheWire` runs over all four presets and asserts that the DOM bytes and
+  the strongly typed bytes are identical, that the DOM reads back through both converters, and that the long
+  case is skipped where the dialect has no `TAG_Long_Array`. Routing through the bulk path changes byte order
+  handling, so this is the invariant the refactor had to preserve.
+
+### Verification
+
+- `dotnet build Poly.NBT.slnx --no-restore`: 0 warnings, 0 errors.
+- `dotnet test Poly.NBT.slnx --no-restore`: 198/198 passed (previously 194).
+- `dotnet format Poly.NBT.slnx --no-restore --verify-no-changes --severity warn`: passed.
+- Re-ran the audit's throughput probe in Release, best of three rounds of twenty, on 100,000 elements: the DOM
+  path is now indistinguishable from the strongly typed one for both writes and reads, where the audit measured
+  roughly 10x and 8x slower.
+
+### Known Issues and Next
+
+- `TAG_Byte_Array` needed no change: its DOM read already went through `StreamIO.ReadExactly` and its write
+  through a single `Stream.Write`.
+- The audit's remaining P2 items are documentation rather than code: the `ToElement`/`FromElement` cost, the
+  compound key order, the `ReadOnlySpan<byte>` copy, and the VarInt byte-at-a-time read on an unbuffered
+  network stream.
+
 ## 2026-09-25 - Document the SNBT quote-selection rule
 
 ### Scope

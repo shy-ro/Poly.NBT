@@ -57,6 +57,31 @@ public sealed class EdgeCaseTests
         Assert.Equal(new[] { 1L }, serializer.DeserializeUsingReflection<long[]>(encoded));
     }
 
+    [Theory]
+    [MemberData(nameof(Dialects))]
+    public void DomAndTypedPrimitiveArraysAgreeOnTheWire(NbtOptions options)
+    {
+        // The DOM converter routes TAG_Int_Array and TAG_Long_Array through the same bulk path as the strongly
+        // typed converter, so the two must still agree byte for byte: same byte order, same VarInt fallback,
+        // same element order. The bulk path is what removes the per-element overhead.
+        NbtSerializer serializer = NbtSerializer.Create(options);
+        int[] ints = [1, -2, 0x7fffffff, int.MinValue];
+        byte[] intDom = SerializeDom(serializer, new NbtIntArray(ints));
+
+        Assert.Equal(serializer.SerializeUsingReflection(ints, ""), intDom);
+        Assert.Equal(ints, Assert.IsType<NbtIntArray>(DeserializeDom(serializer, intDom)).Value);
+        Assert.Equal(ints, serializer.DeserializeUsingReflection<int[]>(intDom));
+
+        if (!options.SupportsLongArray) return;
+
+        long[] longs = [1L, -2L, long.MaxValue, long.MinValue];
+        byte[] longDom = SerializeDom(serializer, new NbtLongArray(longs));
+
+        Assert.Equal(serializer.SerializeUsingReflection(longs, ""), longDom);
+        Assert.Equal(longs, Assert.IsType<NbtLongArray>(DeserializeDom(serializer, longDom)).Value);
+        Assert.Equal(longs, serializer.DeserializeUsingReflection<long[]>(longDom));
+    }
+
     [Fact]
     public void HeterogeneousListIsRejected()
     {
