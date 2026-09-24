@@ -1,5 +1,31 @@
 # Task Log
 
+## 2026-09-25 - Fix SnbtOptions documentation for version provenance
+
+### Scope
+
+Correct the `SnbtOptions` documentation, which attributed every flag to 25w09a. Each flag was verified
+against the Minecraft Wiki history tables for the NBT format and the SNBT format, plus the Mojang 1.21.5
+release notes.
+
+### Actual Changes
+
+- Rewrote the type remarks: the 1.21.5 text format arrived across three snapshots rather than one -
+  25w04a, 25w09a, and 25w10a - so the flag set is coarser than the timeline. A 25w04a dialect, which
+  accepts heterogeneous lists but none of the numeric extensions, cannot be expressed by the two presets.
+- Recorded the introducing snapshot on each flag: heterogeneous lists 25w04a; trailing commas, scientific
+  notation, `0x`/`0b` prefixes, omitted float parts, underscores, signedness suffixes, and the extended
+  string escapes 25w09a; `bool()` and `uuid()` 25w10a.
+- Documented that the wiki history records no introduction version for the `true`/`false` literals, instead
+  of asserting one.
+- Corrected the preset description of `v1_13` from "classic 1.13", which implied a 1.13-era grammar, to the
+  pre-1.21.5 dialect it actually models.
+
+### Verification
+
+- `dotnet build Poly.NBT.slnx --no-restore`: 0 warnings, 0 errors.
+- `dotnet test Poly.NBT.slnx --no-restore`: 112/112 passed.
+
 ## 2026-09-25 - Remove unused SnbtNumbers.TryParseInteger
 
 ### Scope
