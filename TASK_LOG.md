@@ -1,5 +1,49 @@
 # Task Log
 
+## 2026-09-25 - Document the AOT guarantee instead of adding an AOT smoke project
+
+### Scope
+
+The audit's P3-7 proposed a `PublishAot` smoke project so that Native AOT compatibility would be shown by an
+actual publish rather than only asserted by the analyzers that `IsAotCompatible` turns on. A project was
+written and exercised; the decision taken afterwards was not to keep it. What is recorded here is the
+expanded documentation and the evidence behind that call.
+
+### Actual Changes
+
+- README `Requirements`, AOT bullet - now separates the analyzer guarantee from an end-to-end proof. It says
+  what `IsAotCompatible` enables for the library's own build, keeps the `[RequiresUnreferencedCode]` /
+  `[RequiresDynamicCode]` note on the reflection entry points, and states plainly that the repository contains
+  no `PublishAot` project and runs no `dotnet publish -r <rid>`, so a consumer that needs Native AOT should
+  run its own publish against its own target. It also notes that a Windows AOT publish needs the MSVC linker
+  from the "Desktop development with C++" workload, which belongs to .NET Native AOT and not to this library.
+- No project added and no change to `Poly.NBT.slnx`. The trial project was removed, so the solution is
+  byte-for-byte as it was.
+
+### Verification
+
+The trial was run before being dropped, so both the failure mode and the honest limit are known:
+
+- `dotnet build` of the trial project: 0 warnings with the trim, single-file, and Native AOT analyzers
+  enabled. This is the half worth having and it needs no toolchain, because it covers the *consumer* side that
+  the library's own build cannot see - an unannotated public API only warns at a call site.
+- `dotnet publish -c Release -r win-x64`: the managed and AOT compile phases finished with no `IL2xxx` or
+  `IL3xxx` diagnostics; only the final native link failed, because this machine has no Visual Studio and no
+  `vswhere.exe`. So the library's AOT annotations are clean, and the publish itself could not be completed.
+- Running the trial on the managed runtime caught a mistake in the trial program, not in the library:
+  comparing a source record to its deserialized copy with `==` fails because a record's generated equality
+  uses `EqualityComparer<long[]>.Default`, which is reference equality for an array. The comparison had to be
+  field-by-field with `SequenceEqual`. A smoke test that is only compiled is worth little.
+
+### Known Issues and Next
+
+- Native AOT is not verified end to end in this repository. The guarantee offered is the analyzer pass plus
+  the annotations on the reflection entry points. Closing it properly needs a machine or CI job with the C++
+  workload.
+- P3-8 is narrower than first recorded. `TASK_LOG.md` is tracked *and* listed in `.gitignore`; `AGENTS.md` is
+  listed there but is not tracked, so it is not a second instance of the same problem. The open question is
+  therefore only whether `TASK_LOG.md` should leave the index or leave `.gitignore`.
+
 ## 2026-09-25 - Give the project real packaging metadata
 
 ### Scope
