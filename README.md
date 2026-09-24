@@ -291,10 +291,11 @@ materialized once. Three properties are worth knowing before putting this in a h
 - **A VarInt dialect reads one byte at a time.** On `BedrockNetworkEdition` every `TAG_Int` and `TAG_Long`
   decodes through a per-byte `ReadByte`, which is free on a `MemoryStream` and expensive on an unbuffered
   network stream. Wrap such a stream in a `BufferedStream` before handing it over.
-- **SNBT numeric literals are normalized without allocating.** A literal's sign, digit separators, and any
-  omitted integer or fractional part are rewritten into the shape the runtime's own parser expects, in a stack
-  buffer — a pooled one for a pathologically long literal — and parsed from the span. A number token produces
-  no intermediate `string`.
+- **SNBT parsing avoids copying where it can.** A numeric literal's sign, digit separators, and any omitted
+  integer or fractional part are rewritten into the shape the runtime's own parser expects, in a stack buffer
+  — a pooled one for a pathologically long literal — and parsed from the span, so a number token produces no
+  intermediate `string`. A quoted string with no escape is returned as a slice of the input directly, so only
+  a string that actually holds an escape is built up character by character.
 
 Primitive arrays transfer in one call each for a fixed-width dialect: 100,000 elements cost a single
 `ReadExactly` or `Write` over `MemoryMarshal.AsBytes`, with an `ArrayPool` byte-swap only when the dialect's

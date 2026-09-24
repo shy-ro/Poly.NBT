@@ -1,4 +1,6 @@
-﻿using PolyType.ReflectionProvider;
+﻿using Poly.NBT.Dom;
+using Poly.NBT.Snbt;
+using PolyType.ReflectionProvider;
 
 namespace Poly.NBT.Tests;
 
@@ -129,6 +131,32 @@ public sealed class AllocationTests
                 stream.Position = 0;
                 consumed += serializer.Deserialize(stream, shape)!.Count;
             }
+
+            GC.KeepAlive(consumed);
+            return (GC.GetAllocatedBytesForCurrentThread() - before) / Iterations;
+        }
+    }
+
+    [Fact]
+    public void ReadingPlainQuotedStringsDoesNotAllocateThroughABuilder()
+    {
+        // A quoted string with no escape is the common case. Decoding one must cost only the result string;
+        // routing it through a StringBuilder would add the builder's buffer and every doubling along the way,
+        // which is several times the two bytes per character the result itself needs.
+        long small = Measure(1024);
+        long large = Measure(4096);
+
+        double perCharacter = (large - small) / 3072.0;
+        Assert.True(perCharacter < 2.5, $"Parsing a quoted string allocated {perCharacter:N2} bytes per character.");
+
+        long Measure(int length)
+        {
+            string text = "\"" + new string('a', length) + "\"";
+            long consumed = 0;
+            for (int index = 0; index < 3; index++) consumed += ((NbtString)SnbtParser.Parse(text)).Value.Length;
+
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            for (int index = 0; index < Iterations; index++) consumed += ((NbtString)SnbtParser.Parse(text)).Value.Length;
 
             GC.KeepAlive(consumed);
             return (GC.GetAllocatedBytesForCurrentThread() - before) / Iterations;

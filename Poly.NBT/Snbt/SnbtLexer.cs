@@ -63,7 +63,24 @@ internal ref struct SnbtLexer
     {
         int start = _position;
         char quote = Advance();
+        int contentStart = _position;
+
+        // The overwhelming majority of quoted strings contain no escape, so look for the closing quote first
+        // and hand back the slice of the input directly. Only a string that really holds a backslash pays for
+        // a StringBuilder and a per-character copy.
+        while (!AtEnd && _text[_position] != quote && _text[_position] != '\\') _position++;
+
+        if (AtEnd) throw ErrorAt("Unterminated string literal.", start);
+
+        if (_text[_position] == quote)
+        {
+            string plain = _text.Slice(contentStart, _position - contentStart).ToString();
+            _position++;
+            return plain;
+        }
+
         var builder = new StringBuilder();
+        builder.Append(_text.Slice(contentStart, _position - contentStart));
 
         while (true)
         {

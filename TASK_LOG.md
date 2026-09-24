@@ -1,5 +1,42 @@
 # Task Log
 
+## 2026-09-25 - Return an unescaped quoted string as a slice of the input
+
+### Scope
+
+Fix the audit's P3-3. `SnbtLexer.ReadQuotedString` allocated a `StringBuilder` and copied into it one character
+at a time for every quoted string, including the common case with no escape sequence at all. The input is
+already a `ReadOnlySpan<char>` the lexer holds, so a string that needs no decoding can be sliced straight out
+of it.
+
+### Actual Changes
+
+- `ReadQuotedString` scans ahead for the closing quote or the first backslash before it allocates anything. On
+  the closing quote it returns `_text.Slice(...)` directly; on a backslash it creates the `StringBuilder`,
+  primes it with the plain prefix that was already scanned, and continues with the original loop unchanged.
+  The escape handling, the error offsets, and the exception messages are byte-for-byte the same code as before.
+- `ReadingPlainQuotedStringsDoesNotAllocateThroughABuilder` pins the fast path with an allocation delta between
+  a 1 KB and a 4 KB quoted string, the same shape as the existing read-path allocation tests.
+
+### Verification
+
+- `dotnet build Poly.NBT.slnx --no-restore`: 0 warnings, 0 errors.
+- `dotnet test Poly.NBT.slnx --no-restore`: 207/207 passed (previously 206).
+- `dotnet format Poly.NBT.slnx --no-restore --verify-no-changes --severity warn`: passed.
+- The new guard was checked against a reintroduced regression rather than assumed: with the scan disabled so
+  every string takes the builder path, the test reports 4.05 bytes per character and fails against its 2.5
+  threshold. With the scan it is under the threshold. The experiment was reverted.
+- All existing escape, unterminated-string, and error-offset tests pass, which is what makes the "same code
+  path after the first backslash" claim checkable.
+
+### Known Issues and Next
+
+- A string that does contain an escape still copies character by character after the first backslash. That
+  could be tightened to skip plain runs between escapes, but the escape case is the minority and the current
+  shape keeps the decoder readable.
+- The remaining P3 items are untouched: the null-constructible DOM payloads, a missing `.editorconfig`, package
+  metadata and the `Implemented/Planned` table, an AOT smoke project, and the tracked `TASK_LOG.md` decision.
+
 ## 2026-09-25 - Read a sign before an omitted integer part as a number
 
 ### Scope
