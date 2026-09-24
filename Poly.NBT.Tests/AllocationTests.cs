@@ -1,4 +1,4 @@
-using PolyType.ReflectionProvider;
+﻿using PolyType.ReflectionProvider;
 
 namespace Poly.NBT.Tests;
 
@@ -44,14 +44,14 @@ public sealed class AllocationTests
             for (int index = 0; index < 3; index++)
             {
                 stream.Position = 0;
-                consumed += serializer.Deserialize(stream, shape).Length;
+                consumed += serializer.Deserialize(stream, shape)!.Length;
             }
 
             long before = GC.GetAllocatedBytesForCurrentThread();
             for (int index = 0; index < Iterations; index++)
             {
                 stream.Position = 0;
-                consumed += serializer.Deserialize(stream, shape).Length;
+                consumed += serializer.Deserialize(stream, shape)!.Length;
             }
 
             GC.KeepAlive(consumed);
@@ -81,14 +81,14 @@ public sealed class AllocationTests
             for (int index = 0; index < 3; index++)
             {
                 stream.Position = 0;
-                consumed += serializer.Deserialize(stream, shape).Length;
+                consumed += serializer.Deserialize(stream, shape)!.Length;
             }
 
             long before = GC.GetAllocatedBytesForCurrentThread();
             for (int index = 0; index < Iterations; index++)
             {
                 stream.Position = 0;
-                consumed += serializer.Deserialize(stream, shape).Length;
+                consumed += serializer.Deserialize(stream, shape)!.Length;
             }
 
             GC.KeepAlive(consumed);
@@ -120,14 +120,14 @@ public sealed class AllocationTests
             for (int index = 0; index < 3; index++)
             {
                 stream.Position = 0;
-                consumed += serializer.Deserialize(stream, shape).Count;
+                consumed += serializer.Deserialize(stream, shape)!.Count;
             }
 
             long before = GC.GetAllocatedBytesForCurrentThread();
             for (int index = 0; index < Iterations; index++)
             {
                 stream.Position = 0;
-                consumed += serializer.Deserialize(stream, shape).Count;
+                consumed += serializer.Deserialize(stream, shape)!.Count;
             }
 
             GC.KeepAlive(consumed);

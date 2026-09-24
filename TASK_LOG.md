@@ -1,5 +1,28 @@
 # Task Log
 
+## 2026-09-25 - Clear nullable warnings in the allocation tests
+
+### Scope
+
+Hygiene follow-up to the per-scalar buffer work: the new allocation tests read the result of
+`NbtSerializer.Deserialize` and immediately touched `.Length` or `.Count`, but that method returns `T?`, so the
+tree was left with six CS8602 warnings. The build is supposed to be warning-free.
+
+### Actual Changes
+
+- `AllocationTests`: applied the null-forgiving operator at the six call sites. The deserialized value is only
+  consumed to stop the reads from being optimized away, and the run would fail at the point of use if the value
+  really were null, so no test semantics changed.
+
+### Verification
+
+- `dotnet build Poly.NBT.slnx --no-restore`: 0 warnings, 0 errors (was 6 warnings).
+- `dotnet test Poly.NBT.slnx --no-build --no-restore`: 130/130 passed.
+
+### Known Issues and Next
+
+- None. Next is the length-prefix limit from the audit's P0 list.
+
 ## 2026-09-25 - Bound NBT and SNBT nesting depth
 
 ### Scope
