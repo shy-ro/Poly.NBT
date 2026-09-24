@@ -2,81 +2,168 @@
 
 PolyType-based, Native AOT-friendly serialization for the Java and Bedrock NBT wire formats.
 
-## Implemented / Planned
+NBT is Minecraft's binary data format. This library reads and writes it in all four dialects — Java Edition
+files, the Java network protocol, Bedrock files, and the Bedrock network protocol — and gives you three ways
+to work with a document: as your own .NET types, as a read-only tree of generic elements, or as SNBT text.
 
-| Area | Implemented | Planned |
-|:---|:---|:---|
-| Configuration | `NbtOptions` with `Endianness`, `StringEncoding`, `NumericEncoding`, `RootTagNaming`, `SupportsLongArray`, `OptimizePrimitiveListsToArrays` | — |
-| Presets | `JavaEdition`, `JavaNetworkEdition`, `BedrockEdition`, `BedrockNetworkEdition` | — |
-| Encoding | Big/little endian numbers, ZigZag VarInt, Modified UTF-8, strict UTF-8, UTF-8 with escapes, fixed and VarInt length prefixes | — |
-| Converters | Primitives, arrays, collections, dictionaries, objects, `Nullable<T>`, surrogates, enums, DOM, `object` | — |
-| DOM | `NbtElement` and 12 tag types, `NbtList.TryToArray`, `NbtDocument`, `ToElement` / `FromElement` bridge | — |
-| API | `Serialize`, `Deserialize`, `SerializeUsingReflection`, `DeserializeUsingReflection`, `DeserializeDocument` | Async API |
-| SNBT | `SnbtParser`, `SnbtWriter`, `SnbtOptions` (`v1_13` and `v1_21_5` dialects) | — |
-| Polymorphism | — | Union and derived-type serialization |
-| BCL types | — | Built-in marshalers for `decimal`, `Guid`, `DateTime`, `DateTimeOffset` |
+## Supported
 
-## Usage
+| Area | Available |
+|:---|:---|
+| Dialects | `JavaEdition`, `JavaNetworkEdition`, `BedrockEdition`, `BedrockNetworkEdition` |
+| Types | Primitives, arrays, collections, dictionaries, objects, `Nullable<T>`, enums |
+| DOM | `NbtElement` and its twelve tag types, `NbtDocument`, `NbtList.TryToArray` |
+| SNBT | `SnbtParser`, `SnbtWriter`, `SnbtOptions` (`v1_13` and `v1_21_5`) |
+| AOT | Source-generated shapes are trim- and AOT-safe; the reflection entry points are not |
 
-### Basic
+Not implemented: async APIs, polymorphic (union and derived-type) serialization, and built-in marshalers for
+`decimal`, `Guid`, `DateTime`, and `DateTimeOffset`.
+
+## Getting started
+
+The library is not published to NuGet; add it as a project or package reference.
+
+```xml
+<ProjectReference Include="..\Poly.NBT\Poly.NBT.csproj" />
+```
+
+The types live in `Poly.NBT` (serializer and options), `Poly.NBT.Dom` (the element tree), and `Poly.NBT.Snbt`
+(text format).
+
+### Round-trip an object
+
+Annotate your model with `[GenerateShape]`. This is the source-generated path, and the one to prefer: it
+works under trimming and Native AOT, and it needs no reflection at run time.
+
+```csharp
+using Poly.NBT;
+
+[GenerateShape]
+public partial record Player(int Health, string Name);
+```
 
 ```csharp
 NbtSerializer serializer = NbtSerializer.Create(NbtOptions.JavaEdition);
 
-byte[] bytes = serializer.Serialize(value, "root", MyModel.GetTypeShape());
-MyModel? restored = serializer.Deserialize<MyModel>(bytes);
+// To and from a byte array. Both directions need the type's shape.
+byte[] bytes = serializer.Serialize(player, "Player", Player.GetTypeShape());
+Player? restored = serializer.Deserialize<Player>(bytes, Player.GetTypeShape());
+
+// To and from a stream you already own. The shape is inferred, so it is not passed.
+using (FileStream file = File.Create("player.dat"))
+{
+    serializer.Serialize(file, player, "Player");
+}
 ```
 
-With `[GenerateShape]` on `MyModel`:
+To read a stream back, restore its position first — the readers start wherever the stream is.
 
 ```csharp
-NbtSerializer serializer = NbtSerializer.Create(NbtOptions.JavaEdition);
-
-serializer.Serialize(stream, value, "root");
-MyModel? restored = serializer.Deserialize<MyModel>(stream);
+using (FileStream file = File.OpenRead("player.dat"))
+{
+    Player? fromFile = serializer.Deserialize<Player>(file);
+}
 ```
 
-### Configuration
+If a model cannot be annotated, the reflection entry points take its place. They are annotated
+`[RequiresUnreferencedCode]` / `[RequiresDynamicCode]`, so they will not work under trimming or AOT.
 
 ```csharp
-NbtSerializer java = NbtSerializer.Create(NbtOptions.JavaEdition);
-NbtSerializer custom = NbtSerializer.Create(NbtOptions.JavaEdition with { SupportsLongArray = false });
-NbtSerializer bedrock = NbtSerializer.Create(NbtOptions.BedrockNetworkEdition);
+byte[] bytes = serializer.SerializeUsingReflection(player, "Player");
+Player? restored = serializer.DeserializeUsingReflection<Player>(bytes);
 ```
 
-### Root name
+### Read and write a document
 
-A named dialect always writes the name field, so an empty name is written as an empty name (`00 00`), not
-omitted. Java's reader consumes that field unconditionally; leaving it out produced a document no Java
-reader could parse. Whether the field exists at all is a property of the dialect, not of the call:
+When you do not have a model for the data — a file you are only inspecting, or one whose schema varies —
+work with the DOM instead.
 
 ```csharp
-NbtSerializer named = NbtSerializer.Create(NbtOptions.JavaEdition);          // TAG + name + payload
+NbtDocument document = serializer.DeserializeDocument(bytes);
+
+NbtElement root = document.RootElement;
+string name = document.RootTagName;
+
+// Build one by hand and write it.
+NbtCompound level = new(
+    new KeyValuePair<string, NbtElement>("Health", new NbtInt(20)),
+    new KeyValuePair<string, NbtElement>("Name", new NbtString("Player")));
+
+serializer.Serialize(stream, new NbtDocument("Level", level));
+```
+
+## Choosing a dialect
+
+Each preset is a whole wire format, not a set of tweaks. Pick the one that matches where the bytes come from
+or are going.
+
+| Preset | Use it for |
+|:---|:---|
+| `JavaEdition` | Files a Java Edition reader will open, and anything you want to diff against the game's own output. |
+| `JavaNetworkEdition` | The Java network protocol — the same layout without the root name field. |
+| `BedrockEdition` | Bedrock's on-disk format: little-endian, and no `TAG_Long_Array`. |
+| `BedrockNetworkEdition` | Bedrock's network packets — also ZigZag VarInt numbers instead of fixed-width ones. |
+
+Every preset is a `record struct`, so a variation is a `with` expression rather than a new configuration
+object:
+
+```csharp
+NbtSerializer standard = NbtSerializer.Create(NbtOptions.JavaEdition);
+NbtSerializer noArrays = NbtSerializer.Create(NbtOptions.JavaEdition with { SupportsLongArray = false });
+```
+
+`Create` requires an explicit options value — there is no parameterless overload, so a dialect is never chosen
+by accident.
+
+## Root tag name
+
+A named dialect always writes the name field, so an empty name is written as an empty name rather than left
+out. Whether the field exists at all is a property of the dialect, not of the call: the `rootTagName`
+argument only supplies its contents.
+
+```csharp
+NbtSerializer named = NbtSerializer.Create(NbtOptions.JavaEdition);          // tag + name + payload
 NbtSerializer network = NbtSerializer.Create(NbtOptions.JavaNetworkEdition); // RootTagNaming = Omitted
 
-// Both of these write a two-byte empty name.
-named.Serialize(stream, value, "", shape);
-named.Serialize(stream, value, "level", shape);
+named.Serialize(stream, value, "level", shape);   // name field, contents "level"
+named.Serialize(stream, value, "", shape);        // name field, contents empty
+network.Serialize(stream, value, "level", shape); // no name field at all
+```
 
-// JavaNetworkEdition writes no name field at all, whatever the name argument says.
-network.Serialize(stream, value, "level", shape);
+Reading a name-less stream with a named dialect needs an explicit opt-in, which exists only for non-standard
+input:
 
-// Reading a name-less stream with a named dialect is an explicit opt-in for non-standard input.
+```csharp
 MyModel? restored = named.Deserialize(stream, shape, rootNameOmitted: true);
 ```
 
-### Document
+## Working with the DOM
 
-```csharp
-NbtDocument doc = serializer.DeserializeDocument(bytes);
-NbtElement root = doc.RootElement;
-string name = doc.RootTagName;
-```
+Every NBT tag has a matching element type.
 
-### DOM helpers
+| NBT tag | Element | Payload |
+|:---|:---|:---|
+| `TAG_Byte` `TAG_Short` `TAG_Int` `TAG_Long` | `NbtByte` `NbtShort` `NbtInt` `NbtLong` | `sbyte` `short` `int` `long` |
+| `TAG_Float` `TAG_Double` | `NbtFloat` `NbtDouble` | `float` `double` |
+| `TAG_String` | `NbtString` | `string` |
+| `TAG_Byte_Array` `TAG_Int_Array` `TAG_Long_Array` | `NbtByteArray` `NbtIntArray` `NbtLongArray` | `byte[]` `int[]` `long[]` |
+| `TAG_List` | `NbtList` | ordered elements |
+| `TAG_Compound` | `NbtCompound` | named entries |
+
+`NbtList` is an `IReadOnlyList<NbtElement>` and `NbtCompound` is an `IReadOnlyDictionary<string, NbtElement>`,
+so both work with ordinary LINQ. A `NbtCompound` preserves insertion order, and that order is what the SNBT
+text and the wire bytes follow.
+
+The tree is read-only: neither indexer has a setter and there is no `Add` or `Remove`, so `compound["x"] = y`
+will not compile. To change a document, build the tree you want and write that, or go through a model type,
+where properties are ordinary and mutable.
+
+`NbtList.TryToArray` converts a homogeneous list into a typed array in one step, with an overload per
+element type:
 
 ```csharp
 NbtList list = new(new NbtInt(1), new NbtInt(2), new NbtInt(3));
+
 if (list.TryToArray(out int[]? values))
 {
     // values is [1, 2, 3]
@@ -85,67 +172,80 @@ if (list.TryToArray(out int[]? values))
 
 Overloads: `byte[]`, `sbyte[]`, `short[]`, `int[]`, `long[]`, `float[]`, `double[]`, `string[]`.
 
-### Nesting depth
+## SNBT text
 
-Both readers and writers recurse once per nesting level, and the level count comes from the input, so
-the depth is bounded: `NbtOptions.MaxDepth` and `SnbtOptions.MaxDepth` default to 512, counting the
-outermost value as level one. Past the limit the binary reader and both writers throw
-`InvalidDataException`, and the SNBT parser throws `SnbtParseException` with the `Offset` of the
-offending bracket — the message names the option to raise. Zero selects the library default.
+SNBT is NBT written as text — the format of the `/data` command. It converts to and from the DOM only; it
+never touches the binary serializer or PolyType.
 
-The bound exists because `StackOverflowException` cannot be caught in .NET: without it, 15 KB of nested
-`TAG_List` headers or 6 KB of nested brackets terminate the process, which no host can defend against.
-
-### Collection and string lengths
-
-A length prefix is four bytes (or a VarInt) that immediately drives an allocation, so a hostile document
-can ask for two gigabytes before one payload byte has been read. `NbtOptions.MaxCollectionLength` caps
-both the element count of a collection and the encoded byte length of a string; it applies to reading and
-to writing, and defaults to `1 << 24` elements (zero selects the library default). Past the limit reads
-and writes throw `InvalidDataException`, and a negative limit is rejected when the serializer is created.
-
-The default admits every realistic document — a whole 16³ chunk section is a few thousand elements — while
-keeping the worst case for a hostile `TAG_Long_Array` in the low hundreds of megabytes. A truncated
-collection is still reported as `EndOfStreamException`, not as an oversized one, so the two conditions stay
-distinguishable.
-
-The limit is per collection. It does not bound a document's *total* size: a broad tree of individually
-legal collections can still add up. When accepting NBT from an untrusted source, bound the input as well —
-reject streams larger than a fixed number of bytes before handing them to `NbtSerializer`. Minecraft's
-`NbtAccounter` solves the same problem with running total accounting; `MaxCollectionLength` is the
-per-value equivalent.
-
-### Lists
-
-A `TAG_List` is homogeneous: the header declares one element type and every element has to match it. The
-empty list is the single exception. Its element type carries no information — there are no elements for it to
-disagree with — and writers differ on what to put there: this library and Minecraft both write `TAG_End`, but
-the format does not require it. Reading therefore tolerates any element type when the length is zero, on the
-DOM and the typed paths alike, so `09 08 00 00 00 00` (an empty list declared `TAG_String`) reads as an empty
-list whatever it is materialized into, and the two paths cannot disagree about it. Writing still emits
-`TAG_End`. A non-empty list that declares `TAG_End`, or whose elements disagree with the declared type, is
-still rejected.
-
-### Malformed input
-
-Three exception types divide the ways a document can be wrong, so a caller can tell bad bytes from bytes it
-is not configured to accept:
-
-| Exception | Meaning |
-|:---|:---|
-| `FormatException` | The bytes are structurally invalid: an unknown tag type, a negative length, a Modified UTF-8 sequence that is not well-formed, or a VarInt that does not fit its target width. |
-| `InvalidDataException` | The bytes are structurally valid but break a rule — a configured limit such as `MaxDepth` or `MaxCollectionLength`, a heterogeneous `TAG_List`, a missing root value. |
-| `EndOfStreamException` | The document is truncated. A short collection stays in this category rather than being reported as oversized. |
-
-A VarInt encoding wider than its target is deliberately counted as malformed rather than allowed to
-truncate: five groups encode 35 bits, so a hostile `TAG_Int` can carry a value that does not fit in 32, and
-silently keeping the low bits would invent a value the sender never wrote.
-
-### PolyType attributes
 ```csharp
-[GenerateShape]
-public partial record Player(int Health, string Name);
+using Poly.NBT.Snbt;
 
+NbtElement element = SnbtParser.Parse("{name:Bananrama,Health:20b,Pos:[1.0d,2.0d,3.0d]}");
+string text = SnbtWriter.Write(element);
+
+NbtDocument document = SnbtParser.ParseDocument(new StringReader(text));
+SnbtWriter.Write(Console.Out, document);   // streams, never materializing the whole document
+```
+
+On malformed input `SnbtParser` throws `SnbtParseException`, which carries the character `Offset` of the
+failure — the single most useful number when a hand-written file will not load.
+
+Two dialects are provided. `v1_21_5` accepts every syntax extension Minecraft added up to 1.21.5 and is what
+the parameterless overloads use; `v1_13` disables all of them, so it reads the classic grammar:
+
+```csharp
+NbtElement modern = SnbtParser.Parse("{a:1,b:2,}");                       // trailing comma: v1_21_5 only
+NbtElement classic = SnbtParser.Parse("{a:1,b:2}", SnbtOptions.v1_13);
+
+string forClassicReaders = SnbtWriter.Write(element, SnbtOptions.v1_13);
+```
+
+Write with the same options you read with when the text has to round-trip — one flag changes the written text
+(`AllowScientificNotation` off expands `1.0E20d` into a plain decimal literal), and the element type suffixes
+cannot express a heterogeneous list. See [SNBT dialects](docs/internals.md#snbt-dialects) for the full flag
+table and the escape set.
+
+## Common tasks
+
+### Read a document you did not write
+
+A length prefix in the format drives an allocation before any payload is read, so a hostile or corrupt file
+can ask for a lot of memory. `NbtOptions.MaxCollectionLength` and `MaxDepth` bound that, and both are on by
+default.
+
+```csharp
+NbtOptions defensive = NbtOptions.JavaEdition with
+{
+    MaxDepth = 64,
+    MaxCollectionLength = 1 << 20,
+};
+NbtSerializer serializer = NbtSerializer.Create(defensive);
+```
+
+They are per-collection limits, so they do not bound a document's total size. When the input is untrusted,
+check its length before handing the stream over. See
+[Collection and string lengths](docs/internals.md#collection-and-string-lengths).
+
+### Convert between an object and the DOM
+
+`ToElement` and `FromElement` bridge the model and the tree, so you can serialize a typed graph and then walk
+it as generic elements — or build a tree and hand it to a typed deserializer.
+
+```csharp
+NbtElement tree = serializer.ToElement(player, Player.GetTypeShape());
+Player? back = serializer.FromElement(tree, Player.GetTypeShape());
+```
+
+Each call is a full serialize plus a full deserialize through an intermediate buffer. That is fine for
+occasional bridging; in a hot loop, write to a stream instead. See
+[Performance](docs/internals.md#performance).
+
+### Choose a shape you do not own
+
+PolyType attributes work through the serializer unchanged, so a property can be renamed or skipped without
+touching the model's shape:
+
+```csharp
 [GenerateShape]
 public partial class Entity
 {
@@ -155,176 +255,40 @@ public partial class Entity
     [PropertyShape(Ignore = true)]
     public string CacheKey { get; set; } = "";
 }
-
-[GenerateShape]
-[TypeShape(Marshaler = typeof(PointMarshaler))]
-public readonly partial record struct Point(int X, int Y);
 ```
 
-See the [PolyType documentation](https://github.com/eiriktsarpalis/PolyType) for the full attribute surface.
+See [PolyType attributes](docs/internals.md#polytype-attributes).
 
-## SNBT text
+## Errors
 
-`Poly.NBT.Snbt` converts between the SNBT text format and the `NbtElement` DOM. It depends only on
-`Poly.NBT.Dom`; it never touches the binary serializer or PolyType.
-
-```csharp
-NbtElement element = SnbtParser.Parse("{name:Bananrama,Health:20b,Pos:[1.0d,2.0d,3.0d]}");
-string text = SnbtWriter.Write(element);
-NbtDocument document = SnbtParser.ParseDocument(new StringReader(text));
-```
-
-`SnbtParser.Parse` reads exactly one value and throws `SnbtParseException` (carrying the character
-`Offset` of the failure) on malformed input. The text overloads take a `ReadOnlySpan<char>`, so a `string`
-binds to them through the built-in implicit conversion and no intermediate copy is created; the
-`TextReader` overloads cover streams. SNBT has no root tag name, so `ParseDocument` returns a
-document whose `RootTagName` is `string.Empty`. `SnbtWriter` emits compact single-line output:
-byte/short/long literals carry their `b`/`s`/`L` suffixes, floating point follows Java's
-`Double.toString`/`Float.toString` shape followed by `f`/`d`, and strings stay bare unless quoting is
-required. `SnbtWriter.Write(TextWriter, ...)`
-streams the tree element by element and never materializes the whole document as a string; the `string`
-overloads collect the same writes in a `StringWriter`. Every overload has a counterpart that takes an
-`SnbtOptions` value; `SnbtWriter.Write(element, SnbtOptions.v1_13)` therefore produces text the classic
-dialect can read back.
-
-### Dialects
-
-`SnbtOptions` selects the accepted grammar. Each flag mirrors a syntax extension introduced by
-Minecraft 1.21.5; `v1_13` disables every one of them and `v1_21_5` enables every one of them.
-
-| Option | v1_13 | v1_21_5 |
-|:---|:---:|:---:|
-| `AllowTrailingCommas` | No | Yes |
-| `AllowHeterogeneousLists` | No | Yes |
-| `AllowScientificNotation` | No | Yes |
-| `AllowBinaryAndHexLiterals` | No | Yes |
-| `AllowOmittedFloatParts` | No | Yes |
-| `AllowBooleanLiterals` | No | Yes |
-| `AllowUnderscoreSeparators` | No | Yes |
-| `AllowSignednessSuffixes` | No | Yes |
-| `AllowSnbtOperations` (`bool(...)`, `uuid(...)`) | No | Yes |
-
-The parameterless parser and writer overloads use `SnbtOptions.v1_21_5`; there is deliberately no
-`default` preset. `NaN`/`Infinity` literals, the rejection of `i`/`I` integer suffixes, string-key
-compound rules, typed-array suffix handling, and the string escape set are dialect-independent.
-
-A number literal may begin with a sign, and — where `AllowOmittedFloatParts` permits it — the integer or
-fractional part may be left out entirely, so `+.5`, `-.5`, `-5.`, and `5.` are all numbers rather than
-strings. A token that begins with a sign or a point but is not a literal, such as `-foo` or `.foo`, is read
-as a bare string by the parser; the writer nevertheless quotes it, because Minecraft's tokenizer attempts a
-numeric parse first and reports an error instead of falling back.
-
-#### String escapes
-
-Both quote styles accept the same twelve escape sequences. The grammar does not give single-quoted strings
-a smaller set, and the writer emits escapes in every dialect — a string containing a newline is written
-`"a\nb"` even for `v1_13` — so gating them by dialect would make the writer's own output unreadable.
-
-| Escape | Meaning |
+| Exception | Raised when |
 |:---|:---|
-| `\b` `\f` `\n` `\r` `\s` `\t` | Backspace, form feed, line feed, carriage return, space, tab |
-| `\\` `\'` `\"` | Backslash, single quote, double quote |
-| `\xhh` | Two hexadecimal digits, producing a single code unit in `U+0000`–`U+00FF` |
-| `\uhhhh` | Four hexadecimal digits, producing one UTF-16 code unit |
-| `\UHHHHHHHH` | Eight hexadecimal digits, producing a Unicode code point — a surrogate pair when it is above `U+FFFF` |
+| `FormatException` | The bytes are structurally invalid — an unknown tag type, a negative length, a malformed string, an over-wide VarInt. |
+| `InvalidDataException` | The bytes are valid but break a rule — a configured limit, a heterogeneous `TAG_List`, a missing root value. |
+| `EndOfStreamException` | The document is truncated. |
+| `SnbtParseException` | SNBT text is malformed. Carries `Offset`. |
 
-`\N{name}` is the thirteenth escape and is **not** supported; see
-[Limitations](#limitations).
-
-#### Dialect effect on output
-
-Only one flag changes the written text. With `AllowScientificNotation` disabled, floating-point values
-are expanded into equivalent plain decimal literals — `1.0E20d` is written as `100000000000000000000.0d` —
-so the classic dialect can read them back. The expansion moves digits rather than re-formatting the
-value, so the shortest round-trippable representation is preserved exactly. The other eight flags
-describe input only: the writer never emits trailing commas, hexadecimal or binary literals,
-underscores, signedness suffixes, or `bool()`/`uuid()` operations.
-
-Floating-point literals follow the shape Java's `Double.toString`/`Float.toString` produce, because that
-is what Minecraft prints:
-
-| Rule | Example |
-|:---|:---|
-| The mantissa always keeps a decimal point and one digit after it. | `1.0E20d`, `100.0d`, `0.0d` |
-| The exponent carries no `+` and no leading zeros. | `1.2345678901234568E17d` |
-| `E`-notation is used outside `[10^-3, 10^7)`. | `1.0E7d` and `1.0E-4d`, but `9999999.0d` and `0.001d` |
-
-The digits themselves come from the runtime's shortest round-trippable form, which is not always the same
-digits Java picks: for the smallest subnormals Java prints `4.9E-324`, the runtime prints `5E-324`. Both
-parse back to the same value, so this is the one remaining textual difference. The point of the alignment is
-that a document written here and one printed by the game agree byte for byte in every ordinary case, which
-makes diffs, checksums, and cache keys over SNBT output meaningful.
-
-String quoting is dialect-independent on purpose. A bare string is only written when no dialect would
-read it as a number, because the classic dialect treats a number-like token such as `.5` as a malformed
-number and raises `SnbtParseException` instead of falling back to a bare string; quoted strings are valid
-in every dialect. A leading `-`, `+`, or `.` is reserved by the grammar the same way a leading digit is, so
-`-foo` is written as `"-foo"`: Minecraft's tokenizer tries a numeric parse first and errors out rather than
-falling back to a bare string, even though this library's parser does recover. One case the writer cannot
-rescue is a heterogeneous `NbtList`: the element type suffixes cannot express it, so writing such a list
-and parsing it back with `v1_13` fails.
-
-#### Quote selection
-
-When a string does need quoting, the writer picks the quote character that needs no escaping: `a"b` is
-written `'a"b'` and `a'b` is written `"a'b"`. With both kinds present there is no escape-free choice, so
-double quotes win and the double quotes inside are escaped — `a"b'c` becomes `"a\"b'c"`. The Wiki's
-"Conversion to SNBT" section records a different rule, picking the opposite of whichever quote appears
-first, for the `/data get` path. That path always quotes, whereas this writer produces bare strings wherever
-the grammar allows them, so the two are not the same rule applied to the same input; both forms parse to the
-same value, which the tests assert rather than assume.
-
-## Performance
-
-The readers and writers work directly on a `Stream` and never buffer a whole document, so an object graph is
-materialized once. Several properties are worth knowing before putting this in a hot loop.
-
-- **The `ReadOnlySpan<byte>` overloads copy.** They exist so that a caller holding a buffer does not have to
-  construct a `Stream`, not to avoid a copy — the readers are stream-based and the BCL has no read-only span
-  adapter for `Stream`. In a loop, keep one `MemoryStream` and reset it (`Position = 0`) instead of calling the
-  span overloads repeatedly.
-- **`ToElement` and `FromElement` round-trip through the wire format.** Each call is a full serialize plus a
-  full deserialize with an intermediate byte buffer. That keeps one traversal implementation instead of two
-  that have to be kept in step, but it makes the conversion cost the same as writing and reading the document
-  would. With a stream already in hand, `Serialize` writes the same bytes without the second pass. The
-  conversion is also subject to `MaxDepth` and `MaxCollectionLength` like any other read.
-- **A VarInt dialect reads one byte at a time.** On `BedrockNetworkEdition` every `TAG_Int` and `TAG_Long`
-  decodes through a per-byte `ReadByte`, which is free on a `MemoryStream` and expensive on an unbuffered
-  network stream. Wrap such a stream in a `BufferedStream` before handing it over.
-- **SNBT parsing avoids copying where it can.** A numeric literal's sign, digit separators, and any omitted
-  integer or fractional part are rewritten into the shape the runtime's own parser expects, in a stack buffer
-  — a pooled one for a pathologically long literal — and parsed from the span, so a number token produces no
-  intermediate `string`. A quoted string with no escape is returned as a slice of the input directly, so only
-  a string that actually holds an escape is built up character by character.
-
-Primitive arrays transfer in one call each for a fixed-width dialect: 100,000 elements cost a single
-`ReadExactly` or `Write` over `MemoryMarshal.AsBytes`, with an `ArrayPool` byte-swap only when the dialect's
-byte order disagrees with the machine's. Scalars are read through `stackalloc` buffers, so reading an `int` or
-a string allocates nothing beyond the string itself.
-
-The allocation tests in `Poly.NBT.Tests` are the standing guard on these paths. Each asserts a per-item or
-per-character byte budget, so a change that reintroduces a temporary fails the suite rather than only showing
-up as a slower build. There is deliberately no `BenchmarkDotNet` project: a threshold that runs in CI is
-deterministic where a benchmark on shared hardware is not, and the comparisons quoted above came from
-throwaway probes run against the two revisions rather than from a harness kept in the repository.
-
-## Limitations
-
-- **`\N{name}` is not supported.** SNBT defines thirteen string escapes; twelve are implemented in both quote styles, and the thirteenth indexes Unicode's name database (`\N{Snowman}`). A partial table would accept some names and silently reject others with no way for a caller to tell an unsupported name from a misspelled one, so it is refused with an error that names it. Twelve of thirteen is enough for every escape the game emits, since Minecraft does not write `\N{name}` either.
-- **`Utf8WithEscapes` literal escape ambiguity.** If a string contains the literal sequence `ESC x HH` (a `U+001B` character followed by `x` and two hex digits), the encoded form loses the `x` and hex digits on round-trip. This is a rare boundary; the fix would significantly increase complexity and is not planned.
-- **Asymmetric `long[]` deserialization.** When `OptimizePrimitiveListsToArrays` is `false`, `long[]` and `List<long>` still read `TAG_Long_Array` input. Deserialization is driven by the actual tag on the wire and is not constrained by the serializer's output configuration.
+The split is deliberate: it separates bad bytes from bytes this configuration will not accept, so a caller
+can tell corruption from a limit it needs to raise. See [Malformed input](docs/internals.md#malformed-input).
 
 ## Requirements
 
-- **Root values cannot be `null`.** `Serialize` throws `InvalidDataException` if the root value is absent.
-- **List elements cannot be `null`.** NBT has no null representation. `null` elements throw `InvalidDataException` at write time, regardless of whether `OptimizePrimitiveListsToArrays` is enabled.
-- **DOM payloads cannot be `null`.** `NbtString`, `NbtByteArray`, `NbtIntArray`, and `NbtLongArray` reject a null payload with `ArgumentNullException`, because NBT has no absent value. A `with` expression replaces the property without running the constructor, so it can still put one in; the writers then report `InvalidDataException` rather than dereferencing it.
-- **Dictionary keys must be `string`.** Any other key type throws `NotSupportedException` during converter construction.
-- **`NbtCompound` preserves insertion order.** `Keys`, `Values`, and enumeration follow insertion order, and that order decides both the SNBT text and the wire bytes, so it is documented rather than left to the backing collection. Equality and hashing are order-independent, matching NBT's own unordered-map semantics: two compounds with the same entries in different orders are equal.
-- **Enums map to the smallest integer tag for their underlying type.** `byte`/`sbyte` → `TAG_Byte`, `short`/`ushort` → `TAG_Short`, `int`/`uint` → `TAG_Int`, `long`/`ulong` → `TAG_Long`. No string-based names are emitted.
-- **`NbtSerializer.Create` requires explicit options.** There is no parameterless overload.
-- **AOT compatibility.** The library is marked `IsAotCompatible`, which enables the trim, single-file, and Native AOT analyzers for its own build, so it cannot acquire an unannotated reflection dependency without a build warning. The reflection-based `SerializeUsingReflection` / `DeserializeUsingReflection` methods require dynamic code and carry `[RequiresUnreferencedCode]` / `[RequiresDynamicCode]`. What this guarantee does not include is an end-to-end proof: the repository contains no `PublishAot` project and runs no `dotnet publish -r <rid>`, so the analyzer result is what is offered and a consumer that needs Native AOT should run its own publish against its own target. On Windows that publish needs the MSVC linker from the "Desktop development with C++" workload, which is a .NET Native AOT requirement and not a dependency of this library.
+- Root values and list elements cannot be `null`; NBT has no null representation.
+- A DOM payload cannot be `null` — `NbtString(null)` throws `ArgumentNullException`.
+- Dictionary keys must be `string`.
+- Enums map to the smallest integer tag for their underlying type; no names are written.
+- `NbtSerializer.Create` requires explicit options.
+
+## Going deeper
+
+[docs/internals.md](docs/internals.md) covers the configuration reference, the reasoning behind each limit,
+the SNBT dialect and escape tables, the known limitations, and the performance characteristics.
+
+To read the API reference, build the library and open `Poly.NBT.xml` next to the assembly, or point your
+editor at the generated XML — every public member is documented in place.
 
 ## Acknowledgements
 
-The fixtures `test.nbt` and `bigtest.nbt` in `Poly.NBT.Tests/TestFiles` originate from [fNbt](https://github.com/mstefarov/fNbt) and are retained under BSD-3-Clause in `Poly.NBT.Tests/TestFiles/fNbt-LICENSE.txt`.
+The fixtures `test.nbt` and `bigtest.nbt` in `Poly.NBT.Tests/TestFiles` originate from
+[fNbt](https://github.com/mstefarov/fNbt) and are retained under BSD-3-Clause in
+`Poly.NBT.Tests/TestFiles/fNbt-LICENSE.txt`.

@@ -1,5 +1,60 @@
 # Task Log
 
+## 2026-09-25 - Split the README into a usage guide and an internals reference
+
+### Scope
+
+The README had grown into a reference document. It opened with a feature matrix and then explained the root
+name field, the depth and length limits, the malformed-input taxonomy, the SNBT dialect flags, the escape set,
+the float format, and the quoting rule before it showed a second code sample. That material is worth having,
+but not in the first thing a reader sees when all they want is to round-trip a file.
+
+### Actual Changes
+
+- README rewritten as a usage guide: what the library does, how to reference it, a first round trip, choosing
+  a preset, the root-name rule, the DOM, SNBT, four task-oriented recipes, the exception table, and the
+  requirements. It links into the reference for depth rather than inlining it.
+- `docs/internals.md` added for the rest: the preset matrix, the root-name reasoning, the depth and length
+  limits, the list rule, the object-model invariants, the malformed-input taxonomy, the PolyType attributes,
+  the SNBT dialect flag table and escape table, the float format and quoting rules, performance, and the known
+  limitations.
+- Its configuration section keeps only what a signature cannot show — the preset comparison, the value
+  semantics, and when to change each non-preset lever. The per-enum and per-property tables were dropped:
+  `Poly.NBT.xml` already documents every one of those members in more detail, and a hand-copied second copy is
+  a drift source with no upside.
+- Two defects in the old README fixed:
+  - The `Basic` sample called `serializer.Deserialize<MyModel>(bytes)`. Only the `Stream` overloads infer the
+    shape from `IShapeable<T>`; the `byte[]` overloads are declared over `ReadOnlySpan<byte>` and require an
+    explicit `ITypeShape<T>`, so that line could not compile. The guide now passes the shape and explains
+    which overloads need one.
+  - The new text initially called the DOM mutable. `NbtList`'s and `NbtCompound`'s indexers are get-only and
+    neither type has `Add` or `Remove`, so `compound["x"] = y` does not compile. The guide states the tree is
+    read-only and points at a model type for mutation.
+
+### Verification
+
+- Every cross-document anchor was checked against the target headings: `#collection-and-string-lengths`,
+  `#malformed-input`, `#performance`, `#polytype-attributes`, and `#snbt-dialects` all resolve in
+  `docs/internals.md`, and each of the eleven entries in its contents list resolves to a heading.
+- `dotnet package search Poly.NBT` returns no results on nuget.org, which is what the guide's "not published
+  to NuGet" line asserts.
+- `dotnet build Poly.NBT.slnx --no-restore`: 0 warnings, 0 errors. `dotnet test Poly.NBT.slnx --no-restore`:
+  209/209 passed. Documentation only; no source or test file changed.
+
+### Known Issues and Next
+
+- **DocFX was evaluated and rejected.** `GenerateDocumentationFile` already produces a complete
+  `Poly.NBT.xml`, so the question was only whether to render a browsable site from it. DocFX 2.80.1 installs,
+  restores, and runs `metadata` against `net10.0` and C# 14 with `0 warning(s) 0 error(s)`, and emits 30 type
+  files with `NbtSerializer` and `NbtOptions` complete. Its metadata extractor does not understand a C# 14
+  `extension` block, however, and drops every member inside one *silently*: `NbtElementExtensions.yml` came
+  out as `children: []`, and `ToElement`, `FromElement`, `ToElementUsingReflection`, and
+  `FromElementUsingReflection` appear nowhere in the generated output. `Poly.NBT.xml` does contain all four,
+  so the XML-to-IntelliSense path is complete where the XML-to-website path is not. 2.80.1 is the latest
+  published version, so this is not a matter of an outdated tool. Because the audit's section 7.1 calls the
+  `extension` block the correct C# 14 idiom, the code was not rewritten to accommodate the tool; the trial's
+  `docfx.json` and tool manifest were removed. Revisit if DocFX learns the syntax.
+
 ## 2026-09-25 - Close the audit: fix the ignore rule and record the benchmark decision
 
 ### Scope
