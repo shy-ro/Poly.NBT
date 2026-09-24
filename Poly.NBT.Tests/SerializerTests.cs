@@ -13,12 +13,39 @@ public sealed class SerializerTests
         byte[] expected =
         [
             10,
+            0, 0, // the empty root name: the field is part of the header, not optional
             3, 0, 6, (byte)'H', (byte)'e', (byte)'a', (byte)'l', (byte)'t', (byte)'h', 0, 0, 0, 20,
             8, 0, 4, (byte)'N', (byte)'a', (byte)'m', (byte)'e', 0, 4, (byte)'A', (byte)'l', (byte)'e', (byte)'x',
             0,
         ];
 
         Assert.Equal(expected, actual);
+    }
+
+    [Fact]
+    public void AnEmptyRootNameIsWrittenAsAnEmptyNameField()
+    {
+        // Java's NbtIo reads the name field unconditionally, so skipping it for an empty name produced a
+        // document nothing but this library could read back.
+        NbtSerializer serializer = NbtSerializer.Create(NbtOptions.JavaEdition);
+
+        byte[] intBytes = serializer.SerializeUsingReflection(42, "");
+        Assert.Equal(new byte[] { 3, 0, 0, 0, 0, 0, 42 }, intBytes);
+        Assert.Equal(42, serializer.DeserializeUsingReflection<int>(intBytes));
+
+        Assert.Equal(new Player(20, "Alex"), serializer.DeserializeUsingReflection<Player>(
+            serializer.SerializeUsingReflection(new Player(20, "Alex"), "")));
+        Assert.Equal("", serializer.DeserializeDocument(
+            serializer.SerializeUsingReflection(new Player(20, "Alex"), "")).RootTagName);
+    }
+
+    [Fact]
+    public void AnOmittedRootNamingWritesNoNameFieldWhateverTheArgumentSays()
+    {
+        NbtSerializer serializer = NbtSerializer.Create(NbtOptions.JavaNetworkEdition);
+
+        Assert.Equal(new byte[] { 3, 0, 0, 0, 42 }, serializer.SerializeUsingReflection(42, ""));
+        Assert.Equal(new byte[] { 3, 0, 0, 0, 42 }, serializer.SerializeUsingReflection(42, "ignored"));
     }
 
     [Fact]
@@ -52,7 +79,7 @@ public sealed class SerializerTests
         serializer.Serialize<NbtElement>(stream, value, "");
         stream.Position = 0;
 
-        Assert.Equal(value, serializer.Deserialize<NbtElement>(stream, rootNameOmitted: true));
+        Assert.Equal(value, serializer.Deserialize<NbtElement>(stream));
     }
 
     [Fact]

@@ -19,9 +19,19 @@ public enum NbtNumericEncoding : byte
     VarIntZigZag = 1,
 }
 
+/// <summary>Whether the root header carries a name field between the tag byte and the payload.</summary>
+/// <remarks>
+/// This is a dialect property, so it is set by <see cref="NbtOptions.RootTagNaming"/> rather than by the
+/// <c>rootTagName</c> argument: a named dialect writes the field even when the name is empty. Java's
+/// <c>NbtIo</c> reads the field unconditionally, so omitting it for an empty name would produce a document
+/// only this library could read back.
+/// </remarks>
 public enum NbtRootTagNaming : byte
 {
+    /// <summary>The root header is <c>tag</c>, <c>name</c>, payload - the layout Java files and Bedrock files use.</summary>
     Named = 0,
+
+    /// <summary>The root header is <c>tag</c> followed directly by the payload - the layout both network protocols use.</summary>
     Omitted = 1,
 }
 

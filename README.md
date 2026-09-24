@@ -46,15 +46,23 @@ NbtSerializer bedrock = NbtSerializer.Create(NbtOptions.BedrockNetworkEdition);
 
 ### Root name
 
+A named dialect always writes the name field, so an empty name is written as an empty name (`00 00`), not
+omitted. Java's reader consumes that field unconditionally; leaving it out produced a document no Java
+reader could parse. Whether the field exists at all is a property of the dialect, not of the call:
+
 ```csharp
-// Write with a root name
-serializer.Serialize(stream, value, "level", shape);
+NbtSerializer named = NbtSerializer.Create(NbtOptions.JavaEdition);          // TAG + name + payload
+NbtSerializer network = NbtSerializer.Create(NbtOptions.JavaNetworkEdition); // RootTagNaming = Omitted
 
-// Write without a root name
-serializer.Serialize(stream, value, "", shape);
+// Both of these write a two-byte empty name.
+named.Serialize(stream, value, "", shape);
+named.Serialize(stream, value, "level", shape);
 
-// Read a stream that omitted the root name
-MyModel? restored = serializer.Deserialize(stream, shape, rootNameOmitted: true);
+// JavaNetworkEdition writes no name field at all, whatever the name argument says.
+network.Serialize(stream, value, "level", shape);
+
+// Reading a name-less stream with a named dialect is an explicit opt-in for non-standard input.
+MyModel? restored = named.Deserialize(stream, shape, rootNameOmitted: true);
 ```
 
 ### Document

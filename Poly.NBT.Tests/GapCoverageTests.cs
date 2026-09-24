@@ -13,7 +13,7 @@ public sealed class GapCoverageTests
     public void RootNamesAndTrailingDataFollowDocumentedContracts()
     {
         NbtSerializer java = NbtSerializer.Create(NbtOptions.JavaEdition);
-        Assert.Equal(new byte[] { 3, 0, 0, 0, 1 }, java.SerializeUsingReflection(1, ""));
+        Assert.Equal(new byte[] { 3, 0, 0, 0, 0, 0, 1 }, java.SerializeUsingReflection(1, ""));
         Assert.Equal(new byte[] { 3, 0, 4, (byte)'r', (byte)'o', (byte)'o', (byte)'t', 0, 0, 0, 1 }, java.SerializeUsingReflection(1, "root"));
         NbtSerializer network = NbtSerializer.Create(NbtOptions.JavaNetworkEdition);
         Assert.Equal(network.SerializeUsingReflection(1, ""), network.SerializeUsingReflection(1, "anything"));
@@ -111,9 +111,9 @@ public sealed class GapCoverageTests
         NbtSerializer serializer = NbtSerializer.Create(NbtOptions.JavaEdition);
         ReadOnlyModel result = serializer.DeserializeUsingReflection<ReadOnlyModel>(serializer.SerializeUsingReflection(new ReadOnlyModel(), "root"))!;
         Assert.Equal(0, result.Value); // Read-only members are skipped during deserialization.
-        Assert.Equal(new byte[] { 10, 0 }, serializer.SerializeUsingReflection(new WriteOnlyModel { Value = 3 }, ""));
+        Assert.Equal(new byte[] { 10, 0, 0, 0 }, serializer.SerializeUsingReflection(new WriteOnlyModel { Value = 3 }, ""));
         byte[] bytes = serializer.SerializeUsingReflection(new string('a', 65535), "");
-        Assert.Equal(new byte[] { 8, 0xff, 0xff }, bytes[..3]);
+        Assert.Equal(new byte[] { 8, 0, 0, 0xff, 0xff }, bytes[..5]);
     }
 
     [Fact]

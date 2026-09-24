@@ -66,18 +66,32 @@ public sealed partial class NbtSerializer
     private void SerializeRoot<T>(Stream destination, T? value, string rootTagName, NbtConverter<T> converter)
     {
         if (!converter.ShouldWrite(value)) throw new InvalidDataException("The root NBT value cannot be absent.");
-
-        NbtTagType rootType = converter.GetTagType(value);
-        destination.WriteByte((byte)rootType);
-        if (Options.RootTagNaming == NbtRootTagNaming.Named && rootTagName.Length != 0)
-        {
-            Strings.Write(destination, rootTagName);
-        }
-
+        WriteRootHeader(destination, converter.GetTagType(value), rootTagName);
         converter.WritePayload(destination, value, RootDepth);
     }
 
+    /// <summary>Writes the tag byte and, for a named dialect, the name field. See <see cref="NbtRootTagNaming"/>.</summary>
+    private void WriteRootHeader(Stream destination, NbtTagType rootType, string rootTagName)
+    {
+        destination.WriteByte((byte)rootType);
+
+        // The name field is part of the header, not an optional extra: Java reads it unconditionally, so
+        // omitting it when the caller passed an empty name produced a document no Java reader could parse.
+        // "No name field at all" is a property of the dialect, expressed by RootTagNaming.
+        if (Options.RootTagNaming == NbtRootTagNaming.Named)
+        {
+            Strings.Write(destination, rootTagName);
+        }
+    }
+
     /// <summary>Deserializes one root tag. Object-typed scalars become CLR primitives; object-typed lists and compounds remain DOM values.</summary>
+    /// <param name="source">The stream holding one root tag, positioned at its tag byte.</param>
+    /// <param name="shape">The shape of the value to materialize.</param>
+    /// <param name="rootNameOmitted">
+    /// Accepts a non-standard stream that has no name field even though <see cref="NbtOptions.RootTagNaming"/> is
+    /// <see cref="NbtRootTagNaming.Named"/>. Leave it <see langword="false"/> for anything a Java or Bedrock
+    /// implementation wrote; the dialect already governs whether the field exists.
+    /// </param>
     public T? Deserialize<T>(Stream source, ITypeShape<T> shape, bool rootNameOmitted = false)
     {
         ArgumentNullException.ThrowIfNull(source);
@@ -87,6 +101,8 @@ public sealed partial class NbtSerializer
         return converter.ReadPayload(source, actual, RootDepth);
     }
 
+    /// <param name="source">The stream holding one root tag, positioned at its tag byte.</param>
+    /// <param name="rootNameOmitted">As described on <see cref="Deserialize{T}(Stream, ITypeShape{T}, bool)"/>.</param>
     public NbtDocument DeserializeDocument(Stream source, bool rootNameOmitted = false)
     {
         ArgumentNullException.ThrowIfNull(source);
@@ -186,7 +202,10 @@ public sealed partial class NbtSerializer
         using var stream = new MemoryStream();
         Serialize(stream, value, "", shape);
         stream.Position = 0;
-        NbtTagType rootType = ReadTagType(stream);
+
+        // Read the root header rather than just the tag byte: in a named dialect the header carries a name
+        // field, and the converter would otherwise start on the name's length bytes and see TAG_End.
+        (NbtTagType rootType, _) = ReadRootHeader(stream, rootNameOmitted: false);
         return GetElementConverter().ReadPayload(stream, rootType, RootDepth)
             ?? throw new InvalidDataException("The root NBT value cannot be absent.");
     }
@@ -196,10 +215,10 @@ public sealed partial class NbtSerializer
         ArgumentNullException.ThrowIfNull(element);
         using var stream = new MemoryStream();
         NbtConverter<NbtElement> elementConverter = GetElementConverter();
-        stream.WriteByte((byte)elementConverter.GetTagType(element));
+        WriteRootHeader(stream, elementConverter.GetTagType(element), string.Empty);
         elementConverter.WritePayload(stream, element, RootDepth);
         stream.Position = 0;
-        return Deserialize(stream, shape, rootNameOmitted: true);
+        return Deserialize(stream, shape);
     }
 
     private (NbtTagType Type, string RootTagName) ReadRootHeader(Stream source, bool rootNameOmitted)

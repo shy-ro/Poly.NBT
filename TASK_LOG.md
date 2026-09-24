@@ -1,5 +1,59 @@
 # Task Log
 
+## 2026-09-25 - Always write the root name field in a named dialect
+
+### Scope
+
+Fix the audit's P1-2 and the interoperability bug behind it. `Serialize` skipped the root-name field when the
+caller passed an empty name, but the field is part of the root header rather than an optional extra: Java's
+`NbtIo` reads it unconditionally. An empty name therefore produced a document only this library could read
+back, and even that needed a special read flag.
+
+| Dialect | Call | Before | After |
+|:---|:---|:---|:---|
+| `JavaEdition` | `SerializeUsingReflection(42, "")` | `03 0000002A` | `03 0000 0000002A` |
+| `JavaEdition` | round trip of the above | `EndOfStreamException` | `42` |
+
+### Actual Changes
+
+- Split the header write out of `SerializeRoot` into `WriteRootHeader`, which writes the tag byte and then the
+  name field exactly when `RootTagNaming` is `Named`. An empty name is now written as an empty name (`00 00`).
+  Whether the field exists became purely a dialect property; the `rootTagName` argument no longer controls the
+  layout, only its content.
+- Documented the enum accordingly - `Named` is "tag, name, payload" (Java files, Bedrock files), `Omitted` is
+  "tag, payload" (both network protocols) - and documented the read-side `rootNameOmitted` parameter, which is
+  now explicitly an opt-in for non-standard input rather than a peer of the dialect setting.
+- Two internal bugs fell out of the same root cause, both in the DOM bridge:
+  - `ToElementInternal` read only the tag byte and then handed the stream to the converter, so in a named
+    dialect the converter started on the name's length bytes and saw `TAG_End`. Every `ToElement` on a named
+    preset silently returned an empty compound. It now goes through `ReadRootHeader`.
+  - `FromElementInternal` wrote a nameless header and read it back with `rootNameOmitted: true`. It now uses
+    the same `WriteRootHeader`/`ReadRootHeader` pair as the public API, so the bridge and the wire format
+    cannot drift apart again.
+- Four byte-exact tests updated to include the two-byte empty name
+  (`JavaCompoundHasExpectedBytes`, `RootNamesAndTrailingDataFollowDocumentedContracts`,
+  `ReadOnlyWriteOnlyAndMaximumStringBoundaries`), and `DomNestedRoundTrips` no longer needs the read flag.
+- New tests: `AnEmptyRootNameIsWrittenAsAnEmptyNameField` pins the exact bytes and round-trips through both the
+  typed and the document API; `AnOmittedRootNamingWritesNoNameFieldWhateverTheArgumentSays` pins that an
+  omitted dialect ignores the name argument entirely.
+- READMEs "Root name" section rewritten to state the rule and show both dialects.
+
+### Verification
+
+- `dotnet build Poly.NBT.slnx --no-restore`: 0 warnings, 0 errors.
+- `dotnet test Poly.NBT.slnx --no-restore`: 141/141 passed (previously 139).
+- `dotnet format Poly.NBT.slnx --no-restore --verify-no-changes --severity warn`: passed.
+- Audit probe 1 now reports `0300000000002A` and `round trip OK -> 42`; it previously reported
+  `030000002A` followed by `round trip THROWS EndOfStreamException`.
+
+### Known Issues and Next
+
+- The read-side `rootNameOmitted` parameter is kept. It now has no producer inside the library, but it remains
+  the only way to read NBT written by an implementation that omitted the name in a named dialect, and removing
+  a public parameter is a breaking change that the audit did not ask for.
+- `ToElement`/`FromElement` remain round-trips through a `MemoryStream` rather than a direct DOM walk. The
+  behavior is now correct; the cost is still on the P2 list.
+
 ## 2026-09-25 - Bound declared collection and string lengths
 
 ### Scope
