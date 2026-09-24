@@ -24,6 +24,19 @@
         <PackageReadmeFile>README.md</PackageReadmeFile>
     </PropertyGroup>
 
+    <!-- Symbols and source stepping. Source Link itself needs no package: the .NET SDK bundles the GitHub
+         provider and turns it on unless a Microsoft.SourceLink package is referenced, so a PDB built here
+         already maps every tracked source file to raw.githubusercontent.com at the packed commit. These
+         properties add the package shape and the reproducibility. A local build keeps its own paths, because
+         that is what the debugger needs to read the working tree; a CI build normalizes them to /_/ so the
+         published PDB does not depend on where it was built. -->
+    <PropertyGroup>
+        <IncludeSymbols>true</IncludeSymbols>
+        <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+        <PublishRepositoryUrl>true</PublishRepositoryUrl>
+        <ContinuousIntegrationBuild Condition="'$(CI)' == 'true' or '$(TF_BUILD)' == 'true'">true</ContinuousIntegrationBuild>
+    </PropertyGroup>
+
     <ItemGroup>
         <PackageReference Include="PolyType" Version="1.4.1" />
     </ItemGroup>

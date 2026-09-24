@@ -1,5 +1,65 @@
 # Task Log
 
+## 2026-09-25 - Ship symbols, and record what Source Link already covers
+
+### Scope
+
+The packaging entry gave the project a real package but only half of one: `dotnet pack` produced a `.nupkg`
+and stopped, so a consumer stepping into this library saw a decompiled approximation of every line. The
+question that opened this entry was whether snupkg and Source Link were done. The answer was split, and the
+useful part is which half: Source Link was already working and had never been checked, and no symbol package
+was produced at all.
+
+### Actual Changes
+
+- `IncludeSymbols` and `SymbolPackageFormat=snupkg`: `dotnet pack` now writes `Poly.NBT.0.1.0.snupkg` beside
+  the `.nupkg`. It contains `lib/net10.0/Poly.NBT.pdb` and nothing else, which is the point of a symbol
+  package — the PDB stays out of the package everyone downloads. `PublishRepositoryUrl` keeps the repository
+  element in both nuspecs.
+- `ContinuousIntegrationBuild`, set only when `CI` or `TF_BUILD` is true. It is the one setting here that can
+  make things worse if it is unconditional: it rewrites source paths to `/_/` before the compiler sees them,
+  which is what makes a published PDB independent of the machine that built it and what would also stop a
+  local debugger from reading the working tree.
+- **No `Microsoft.SourceLink.GitHub` reference, and that is the finding rather than an omission.** The .NET
+  SDK bundles the GitHub provider and enables it unless one of those packages is referenced, so the PDB this
+  project already produced carried a Source Link document all along. Adding the package would suppress the
+  bundled provider and buy nothing. The project file says so where the symbols are configured.
+- `docs/internals.md` gains a `## Packaging` section: what each package contains, why the PDB is separate,
+  where the Source Link provider comes from, what `ContinuousIntegrationBuild` does and why it is conditional,
+  and the one gap below.
+- `AGENTS.md` gains the release commands and an explicit note not to add a SourceLink package.
+
+### Verification
+
+- `dotnet pack Poly.NBT/Poly.NBT.csproj` with no extra properties now writes both packages. Both were opened
+  and listed: the nupkg has the assembly, `Poly.NBT.xml`, `README.md` and `LICENSE` with no PDB, and the
+  snupkg has `Poly.NBT.pdb` alone.
+- The Source Link document was read out of the PDB inside the snupkg. A local pack maps
+  `C:\Users\ssp47\...\main-a089468b\*`; `CI=true dotnet pack` maps `/_/*`. Both name commit `9140ed7`, which
+  is the commit the working tree was on, so the condition wiring does what it claims.
+- The mapping was followed end to end rather than assumed: `https://raw.githubusercontent.com/shy-ro/Poly.NBT/9140ed7.../Poly.NBT/NbtSerializer.cs`,
+  `.../Poly.NBT/Dom/NbtElement.cs`, `.../LICENSE`, and `.../docs/internals.md` all return 200, and the same
+  URL with an all-zero commit returns 404 as a control. Source stepping will work for a pushed commit, and the
+  same check is what shows it cannot work for an unpushed one.
+- The generated-code gap was tested rather than reasoned about. `EmitCompilerGeneratedFiles=true` was tried:
+  the three PolyType outputs (`Poly.NBT.Dom.NbtElement.g.cs`, both `TypeShapeProvider` files) reached `obj/`,
+  but the PDB still recorded the bare hint name and still embedded no content, so the property is left off.
+- Every anchor in the internals contents list and every cross-document link resolves, including the new
+  `#packaging`. `dotnet build Poly.NBT.slnx --no-restore`: 0 warnings, 0 errors. `dotnet test`: 209/209 passed.
+  `dotnet format --verify-no-changes --severity warn` and `git diff --check`: clean. No source or test file
+  changed.
+
+### Known Issues and Next
+
+- Source-generated code cannot be source-linked: Roslyn records generator output under its hint name rather
+  than a repository path, so a step into PolyType's generated shape provider has no source to show. This is
+  written up in `docs/internals.md` rather than worked around, because nothing in this project's build can
+  change the name Roslyn records.
+- There is no `PackageReleaseNotes`, so the release-notes field will be empty on nuget.org. That is a decision
+  for the first push rather than for now.
+- Nothing here publishes anything. The packages are built, not pushed; `dotnet nuget push` for both is the
+  remaining step whenever 0.1.0 goes out.
+
 ## 2026-09-25 - Make the README a usage guide and its claims match the evidence
 
 ### Scope

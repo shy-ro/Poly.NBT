@@ -17,6 +17,7 @@ sentence.
 - [PolyType attributes](#polytype-attributes)
 - [SNBT dialects](#snbt-dialects)
 - [Performance](#performance)
+- [Packaging](#packaging)
 - [Limitations](#limitations)
 - [Third-party notices](#third-party-notices)
 
@@ -351,6 +352,32 @@ per-character byte budget, so a change that reintroduces a temporary fails the s
 up as a slower build. There is deliberately no `BenchmarkDotNet` project: a threshold that runs in CI is
 deterministic where a benchmark on shared hardware is not, and the comparisons quoted above came from
 throwaway probes run against the two revisions rather than from a harness kept in the repository.
+
+## Packaging
+
+`dotnet pack Poly.NBT/Poly.NBT.csproj` writes two packages. `Poly.NBT.<version>.nupkg` carries the assembly,
+the generated `Poly.NBT.xml`, the README, and the LICENSE. `Poly.NBT.<version>.snupkg` is the symbol package
+and carries the PDB, and nothing else: the two are separate so that symbols are downloaded only by a debugger
+that asks for them. Both go to nuget.org with `dotnet nuget push`, the symbol package under the same id.
+
+The PDB is portable and carries a Source Link document, so a debugger holding it fetches the exact source for
+the commit the package was built from instead of showing a decompiled approximation. No package reference is
+needed for that: the .NET SDK bundles the GitHub provider and enables it by default, so `Microsoft.SourceLink.*`
+appears nowhere in the project file, and adding one would suppress the bundled provider rather than improve it.
+The provider comes from `RepositoryUrl` and the commit comes from the repository at build time, which is why
+source stepping only works for a commit that has been pushed.
+
+`ContinuousIntegrationBuild` is set only when `CI` or `TF_BUILD` is true. It rewrites every source path to
+`/_/` before the compiler sees it, so the published PDB does not depend on where the build ran; leaving it off
+for a local build is what keeps the debugger reading the working tree instead of the last commit. A release
+built anywhere should therefore be packed as `CI=true dotnet pack`.
+
+One gap is worth knowing about: source-generated code cannot be source-linked. PolyType's DOM converter and
+shape providers are added to the compilation in memory, and Roslyn records them under their bare hint name
+(`Poly.NBT.Dom.NbtElement.g.cs`) rather than a path under the repository root, so neither the Source Link
+mapping nor a debugger can resolve them — a step into generated code, the shape provider for `NbtElement` for
+instance, has no source to show. `EmitCompilerGeneratedFiles` writes those files to `obj/` but does not change
+the name they are recorded under, so it does not close the gap and is left off.
 
 ## Limitations
 
