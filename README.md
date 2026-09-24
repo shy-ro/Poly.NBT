@@ -257,6 +257,29 @@ first, for the `/data get` path. That path always quotes, whereas this writer pr
 the grammar allows them, so the two are not the same rule applied to the same input; both forms parse to the
 same value, which the tests assert rather than assume.
 
+## Performance
+
+The readers and writers work directly on a `Stream` and never buffer a whole document, so an object graph is
+materialized once. Three properties are worth knowing before putting this in a hot loop.
+
+- **The `ReadOnlySpan<byte>` overloads copy.** They exist so that a caller holding a buffer does not have to
+  construct a `Stream`, not to avoid a copy — the readers are stream-based and the BCL has no read-only span
+  adapter for `Stream`. In a loop, keep one `MemoryStream` and reset it (`Position = 0`) instead of calling the
+  span overloads repeatedly.
+- **`ToElement` and `FromElement` round-trip through the wire format.** Each call is a full serialize plus a
+  full deserialize with an intermediate byte buffer. That keeps one traversal implementation instead of two
+  that have to be kept in step, but it makes the conversion cost the same as writing and reading the document
+  would. With a stream already in hand, `Serialize` writes the same bytes without the second pass. The
+  conversion is also subject to `MaxDepth` and `MaxCollectionLength` like any other read.
+- **A VarInt dialect reads one byte at a time.** On `BedrockNetworkEdition` every `TAG_Int` and `TAG_Long`
+  decodes through a per-byte `ReadByte`, which is free on a `MemoryStream` and expensive on an unbuffered
+  network stream. Wrap such a stream in a `BufferedStream` before handing it over.
+
+Primitive arrays transfer in one call each for a fixed-width dialect: 100,000 elements cost a single
+`ReadExactly` or `Write` over `MemoryMarshal.AsBytes`, with an `ArrayPool` byte-swap only when the dialect's
+byte order disagrees with the machine's. Scalars are read through `stackalloc` buffers, so reading an `int` or
+a string allocates nothing beyond the string itself.
+
 ## Limitations
 
 - **`\N{name}` is not supported.** SNBT defines thirteen string escapes; twelve are implemented in both quote styles, and the thirteenth indexes Unicode's name database (`\N{Snowman}`). A partial table would accept some names and silently reject others with no way for a caller to tell an unsupported name from a misspelled one, so it is refused with an error that names it. Twelve of thirteen is enough for every escape the game emits, since Minecraft does not write `\N{name}` either.

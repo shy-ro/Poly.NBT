@@ -1,5 +1,58 @@
 # Task Log
 
+## 2026-09-25 - Document the cost of the convenience conversions and span overloads
+
+### Scope
+
+Fix the audit's P2-3 and P2-7, and close the second half of P2-4. Three public entry points have a cost that
+is not visible from their signature, and the audit proposed either changing the design or documenting it. It
+proposed the documentation as the zero-risk option and it is the right one here:
+
+- `NbtElementExtensions.ToElement`/`FromElement` (P2-3) convert by serializing to a `MemoryStream` and reading
+  the bytes back, so each call is a full serialize plus a full deserialize with an intermediate buffer. That is
+  a deliberate single-traversal design, not an oversight, but nothing in the API said so.
+- `NbtSerializer.Deserialize(ReadOnlySpan<byte>, ...)` and `DeserializeDocument(ReadOnlySpan<byte>, ...)`
+  (P2-7) call `data.ToArray()` unconditionally. The rationale - the readers are stream-based and the BCL has no
+  read-only span adapter for `Stream` - is sound, but an overload taking a span reads as though it avoids a
+  copy, which it does not.
+- The VarInt dialects read through a per-byte `ReadByte` (P2-4). Free on a `MemoryStream`, expensive on an
+  unbuffered network stream. Worth stating next to the array path so a caller can tell which is which.
+
+Documenting all three in one place keeps the guidance together instead of scattering it across a page of xmldoc
+that a reader has to assemble themselves.
+
+### Actual Changes
+
+- `NbtElementExtensions` gained a type-level `<remarks>` block: the conversion round-trips through the wire
+  format and costs a serialize plus a deserialize plus one buffer, the reason (one traversal instead of two
+  that have to be kept in step), the cheaper alternative when a stream is already in hand, and that the
+  conversion is subject to `MaxDepth` and `MaxCollectionLength` like any other read. Each method got a one-line
+  `<remarks>` pointing back at it.
+- The two `ReadOnlySpan<byte>` overloads in `NbtSerializer` gained xmldoc: the span is copied into a read-only
+  `MemoryStream`, the overload exists for ergonomics rather than to avoid the copy, and a hot loop should keep
+  one `MemoryStream` and reset `Position` instead. `DeserializeDocument(ReadOnlySpan<byte>, ...)` uses
+  `<inheritdoc>` so the two stay in step.
+- README gained a `Performance` section collecting the three facts above and the array path: primitive arrays
+  move in one `ReadExactly`/`Write` over `MemoryMarshal.AsBytes` with an `ArrayPool` swap only on a byte-order
+  mismatch, and scalars go through `stackalloc`, so a scalar read allocates nothing beyond the string itself.
+
+### Verification
+
+- `dotnet build Poly.NBT.slnx --no-restore`: 0 warnings, 0 errors.
+- `dotnet test Poly.NBT.slnx --no-restore`: 201/201 passed.
+- `dotnet format Poly.NBT.slnx --no-restore --verify-no-changes --severity warn`: passed.
+- Documentation-only change: no behavior is altered, and no test was touched.
+
+### Known Issues and Next
+
+- The span overloads still copy. Removing the copy would mean a span-based reader, which is a real change to
+  the I/O core rather than a documentation fix, so it is left as documented behavior for now.
+- P2-5 remains open: an empty `TAG_List` carries no element type, and the DOM accepts it while `List<int>` does
+  not. One behavior has to be chosen or the asymmetry documented.
+- The P3 series is untouched: `SnbtNumbers.Decimal` temporary strings, the `SuffixLetters.Contains` scan, the
+  unconditional `StringBuilder` in `ReadQuotedString`, null-constructible DOM arrays, a missing `.editorconfig`,
+  package metadata, an AOT smoke project, and the tracked `TASK_LOG.md` decision.
+
 ## 2026-09-25 - Make the compound key order a documented contract
 
 ### Scope

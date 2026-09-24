@@ -126,6 +126,17 @@ public sealed partial class NbtSerializer
         return stream.ToArray();
     }
 
+    /// <summary>Deserializes one root tag, rejecting trailing data.</summary>
+    /// <param name="data">The bytes of one root tag.</param>
+    /// <param name="shape">The shape of the value to materialize.</param>
+    /// <param name="rootNameOmitted">As described on <see cref="Deserialize{T}(Stream, ITypeShape{T}, bool)"/>.</param>
+    /// <remarks>
+    /// This overload copies <paramref name="data"/> into a read-only <see cref="MemoryStream"/> first. It exists
+    /// so that a caller holding a buffer does not have to construct a <see cref="Stream"/> itself, not to avoid
+    /// a copy: the readers are stream-based and the BCL offers no read-only span adapter for
+    /// <see cref="Stream"/>. In a hot loop, keep one <see cref="MemoryStream"/> and reset it with
+    /// <c>Position = 0</c> between calls instead of using this overload repeatedly.
+    /// </remarks>
     public T? Deserialize<T>(ReadOnlySpan<byte> data, ITypeShape<T> shape, bool rootNameOmitted = false)
     {
         using var stream = new MemoryStream(data.ToArray(), writable: false);
@@ -134,6 +145,7 @@ public sealed partial class NbtSerializer
         return result;
     }
 
+    /// <inheritdoc cref="Deserialize{T}(ReadOnlySpan{byte}, ITypeShape{T}, bool)"/>
     public NbtDocument DeserializeDocument(ReadOnlySpan<byte> data, bool rootNameOmitted = false)
     {
         using var stream = new MemoryStream(data.ToArray(), writable: false);
