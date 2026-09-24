@@ -1,5 +1,46 @@
 # Task Log
 
+## 2026-09-25 - Quote SNBT strings that start with a sign or a point
+
+### Scope
+
+Fix the audit's P1-4, a write-side interoperability bug. SNBT reserves a leading digit, sign, or point for
+numbers and `CanWriteBare` only rejected a leading digit, so `new NbtString("-foo")` was written bare as
+`-foo`. Minecraft's tokenizer tries a numeric parse first and reports an error rather than falling back to a
+bare string, so `{a:-foo}` is not valid SNBT. The library's own parser *does* fall back, which is exactly why
+`WrittenStringsRoundTrip` was green and the bug stayed hidden.
+
+| Value | Before | After |
+|:---|:---|:---|
+| `-foo` | `-foo` | `"-foo"` |
+| `+foo` | `+foo` | `"+foo"` |
+| `.foo` | `.foo` | `".foo"` |
+| `a-b`, `a+b`, `a.b` | bare | bare - only the first character is reserved |
+
+### Actual Changes
+
+- `CanWriteBare` now rejects a leading `-`, `+`, or `.` as well as a leading digit. `+` is included for the
+  same reason as `-`: the reader accepts `+1`, so a leading `+` begins a number.
+- New `QuotesStringsThatStartWithASignOrPoint` covers the three newly quoted forms, `-1.5`, and the negative
+  cases that must stay bare. The previous test list already contained `"-foo"`, `".foo"` and `"a+b"`, but
+  asserted them against this library's own lenient parser instead of the game's grammar.
+- README's string-quoting paragraph now states the full reserved-first-character set and says why a round
+  trip through this library cannot detect the problem.
+
+### Verification
+
+- `dotnet build Poly.NBT.slnx --no-restore`: 0 warnings, 0 errors.
+- `dotnet test Poly.NBT.slnx --no-restore`: 143/143 passed (previously 142).
+- `dotnet format Poly.NBT.slnx --no-restore --verify-no-changes --severity warn`: passed.
+- `WrittenStringsRoundTrip` still passes, so nothing that used to be written bare has become unreadable.
+
+### Known Issues and Next
+
+- The parser deliberately stays more lenient than the game and still falls back to a bare string where
+  Minecraft reports an error. Tightening it would reject input that is unambiguous here, and the writer no
+  longer produces the shape that made leniency matter.
+- Next is P1-5, the floating-point text shape.
+
 ## 2026-09-25 - Report over-wide VarInts as bad data
 
 ### Scope

@@ -77,6 +77,23 @@ public sealed class SnbtWriterTests
     }
 
     [Fact]
+    public void QuotesStringsThatStartWithASignOrPoint()
+    {
+        // SNBT reserves a leading sign or point for numbers. Minecraft's tokenizer tries a numeric parse first
+        // and reports an error rather than falling back to a bare string, so {a:-foo} is invalid SNBT even
+        // though this library's own parser recovers by falling back. Only the first character is reserved:
+        // "a-b" and "hello.world" stay bare.
+        Assert.Equal("\"-foo\"", SnbtWriter.Write(new NbtString("-foo")));
+        Assert.Equal("\"+foo\"", SnbtWriter.Write(new NbtString("+foo")));
+        Assert.Equal("\".foo\"", SnbtWriter.Write(new NbtString(".foo")));
+        Assert.Equal("\"-1.5\"", SnbtWriter.Write(new NbtString("-1.5")));
+        Assert.Equal("a-b", SnbtWriter.Write(new NbtString("a-b")));
+        Assert.Equal("a+b", SnbtWriter.Write(new NbtString("a+b")));
+        Assert.Equal("a.b", SnbtWriter.Write(new NbtString("a.b")));
+        Assert.Equal("_foo", SnbtWriter.Write(new NbtString("_foo")));
+    }
+
+    [Fact]
     public void WrittenStringsRoundTrip()
     {
         string[] values = ["hello", "_foo", "hello.world", string.Empty, "1", "1b", "-1", "0x10", "true", "false",

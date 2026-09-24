@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Text;
 using Poly.NBT.Dom;
 
@@ -353,7 +353,11 @@ public static class SnbtWriter
     private static bool CanWriteBare(string value)
     {
         if (value.Length == 0) return false;
-        if (value[0] is >= '0' and <= '9') return false;
+
+        // SNBT reserves a leading sign or point for numbers: Minecraft's tokenizer tries a numeric parse first
+        // and reports an error instead of falling back to a bare string, so `{a:-foo}` is not valid SNBT even
+        // though this library's own parser recovers. `+` is included because the reader accepts `+1`.
+        if (value[0] is (>= '0' and <= '9') or '-' or '+' or '.') return false;
 
         foreach (char character in value)
         {

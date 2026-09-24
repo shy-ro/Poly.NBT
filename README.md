@@ -208,8 +208,11 @@ underscores, signedness suffixes, or `bool()`/`uuid()` operations.
 String quoting is dialect-independent on purpose. A bare string is only written when no dialect would
 read it as a number, because the classic dialect treats a number-like token such as `.5` as a malformed
 number and raises `SnbtParseException` instead of falling back to a bare string; quoted strings are valid
-in every dialect. One case the writer cannot rescue is a heterogeneous `NbtList`: the element type
-suffixes cannot express it, so writing such a list and parsing it back with `v1_13` fails.
+in every dialect. A leading `-`, `+`, or `.` is reserved by the grammar the same way a leading digit is, so
+`-foo` is written as `"-foo"`: Minecraft's tokenizer tries a numeric parse first and errors out rather than
+falling back to a bare string, even though this library's parser does recover. One case the writer cannot
+rescue is a heterogeneous `NbtList`: the element type suffixes cannot express it, so writing such a list
+and parsing it back with `v1_13` fails.
 
 ## Limitations
 
