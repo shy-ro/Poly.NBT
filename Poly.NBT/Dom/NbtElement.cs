@@ -13,9 +13,22 @@ public sealed record NbtInt(int Value) : NbtElement;
 public sealed record NbtLong(long Value) : NbtElement;
 public sealed record NbtFloat(float Value) : NbtElement;
 public sealed record NbtDouble(double Value) : NbtElement;
-public sealed record NbtString(string Value) : NbtElement;
+
+/// <summary>An NBT string.</summary>
+/// <remarks>
+/// The payload of an element is a value NBT cannot represent as absent, so a <see langword="null"/> is a
+/// caller mistake rather than a state to carry, and the constructor rejects one. A <see langword="with"/>
+/// expression replaces the property without running the constructor, so a null can still be put in that way;
+/// the writers refuse it when they meet it rather than dereferencing it.
+/// </remarks>
+public sealed record NbtString(string Value) : NbtElement
+{
+    public string Value { get; init; } = Value ?? throw new ArgumentNullException(nameof(Value));
+}
+
 public sealed record NbtByteArray(byte[] Value) : NbtElement
 {
+    public byte[] Value { get; init; } = Value ?? throw new ArgumentNullException(nameof(Value));
     public bool Equals(NbtByteArray? other) => other is not null && Value.AsSpan().SequenceEqual(other.Value);
     public override int GetHashCode() => StructuralHash(Value);
     private static int StructuralHash(ReadOnlySpan<byte> values)
@@ -28,6 +41,7 @@ public sealed record NbtByteArray(byte[] Value) : NbtElement
 
 public sealed record NbtIntArray(int[] Value) : NbtElement
 {
+    public int[] Value { get; init; } = Value ?? throw new ArgumentNullException(nameof(Value));
     public bool Equals(NbtIntArray? other) => other is not null && Value.AsSpan().SequenceEqual(other.Value);
     public override int GetHashCode() => StructuralHash(Value);
     private static int StructuralHash(ReadOnlySpan<int> values)
@@ -40,6 +54,7 @@ public sealed record NbtIntArray(int[] Value) : NbtElement
 
 public sealed record NbtLongArray(long[] Value) : NbtElement
 {
+    public long[] Value { get; init; } = Value ?? throw new ArgumentNullException(nameof(Value));
     public bool Equals(NbtLongArray? other) => other is not null && Value.AsSpan().SequenceEqual(other.Value);
     public override int GetHashCode() => StructuralHash(Value);
     private static int StructuralHash(ReadOnlySpan<long> values)

@@ -103,6 +103,11 @@ public static class SnbtWriter
             case NbtByteArray item: AppendByteArray(writer, item.Value); break;
             case NbtIntArray item: AppendIntArray(writer, item.Value); break;
             case NbtLongArray item: AppendLongArray(writer, item.Value); break;
+
+            // A container can still hold a null, because the list and compound constructors copy their input
+            // rather than scan it. Fail with the same error and message the binary writer uses, so a malformed
+            // tree is reported the same way whichever format it is written to.
+            case null: throw new InvalidDataException("NBT DOM values cannot be null.");
             default: throw new NotSupportedException($"Unknown NBT DOM type {element.GetType()}.");
         }
     }
@@ -356,6 +361,8 @@ public static class SnbtWriter
 
     private static void AppendString(TextWriter writer, string value)
     {
+        if (value is null) throw new InvalidDataException("NBT DOM values cannot be null.");
+
         if (CanWriteBare(value))
         {
             writer.Write(value);

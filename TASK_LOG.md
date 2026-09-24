@@ -1,5 +1,54 @@
 # Task Log
 
+## 2026-09-25 - Reject a null DOM payload instead of dereferencing it
+
+### Scope
+
+Fix the audit's P3-4. `NbtString(null!)` and `NbtByteArray(null!)` were constructible, and the same applied to
+the other array elements. NBT has no absent value, so a null payload is a caller mistake rather than a state
+worth carrying - but nothing stopped one being built, and the failure at write time was different on each
+path: `NbtStringCodec.Write` raised `ArgumentNullException`, while `SnbtWriter.AppendElement` fell into its
+switch default and evaluated `element.GetType()` on the null, producing a `NullReferenceException` that named
+nothing. A `null` element inside a `NbtList` or `NbtCompound` reached the same `NullReferenceException`, while
+the binary writer already reported it as `InvalidDataException`.
+
+### Actual Changes
+
+- `NbtString`, `NbtByteArray`, `NbtIntArray`, and `NbtLongArray` reject a null payload in the property
+  initializer, so `new NbtString(null!)` and friends throw `ArgumentNullException`. The initializer form is
+  what makes this work with a positional record: the initializer reads the primary-constructor parameter, so
+  the parameter is not left unread the way it is when the property is declared with a custom accessor.
+- `SnbtWriter.AppendElement` gained a `case null:` that throws `InvalidDataException` with the same message the
+  binary writer uses, so a null inside a container fails identically on both paths instead of producing a
+  `NullReferenceException`.
+- `SnbtWriter.AppendString` rejects a null payload with the same exception, which covers a null that arrives
+  through a `with` expression.
+- `NullDomPayloadsAreRejected` and `ANullElementInsideAContainerIsReportedByBothWriters` pin all of it: the four
+  constructors, a null string in a container and at the root, and a null element in a list and a compound, with
+  both writers checked.
+- README's `Requirements` list records the rule.
+
+### Verification
+
+- `dotnet build Poly.NBT.slnx --no-restore`: 0 warnings, 0 errors.
+- `dotnet test Poly.NBT.slnx --no-restore`: 209/209 passed (previously 207).
+- `dotnet format Poly.NBT.slnx --no-restore --verify-no-changes --severity warn`: passed.
+- Two rejected alternatives, kept here so they are not tried again: declaring the property with a custom
+  `init` and the C# 14 `field` keyword leaves a positional record's parameter unread (CS8907) and the property
+  unassigned (CS9264), and the `{ get; init; } = Value ?? ...` form guards the constructor but not `with`, which
+  clones and sets the property without running the initializer.
+
+### Known Issues and Next
+
+- A `with` expression can still put a null payload in place, and there the binary writer still reports
+  `ArgumentNullException` from the string codec while the SNBT writer reports `InvalidDataException`. Both are
+  real exceptions rather than a `NullReferenceException`, and the two paths disagree only for a state that a
+  constructor cannot produce.
+- `NbtList` and `NbtCompound` do not scan for null elements, deliberately: the constructors already copy their
+  input, and a second pass would add a full traversal to the read path for a mistake the writers already catch.
+- The remaining P3 items are untouched: a missing `.editorconfig`, package metadata and the
+  `Implemented/Planned` table, an AOT smoke project, and the tracked `TASK_LOG.md` decision.
+
 ## 2026-09-25 - Return an unescaped quoted string as a slice of the input
 
 ### Scope

@@ -1,4 +1,5 @@
 using Poly.NBT.Dom;
+using Poly.NBT.Snbt;
 
 namespace Poly.NBT.Tests;
 
@@ -89,6 +90,40 @@ public sealed class EdgeCaseTests
         NbtList value = new(new NbtInt(1), new NbtString("two"));
 
         Assert.Throws<InvalidDataException>(() => SerializeDom(serializer, value));
+    }
+
+    [Fact]
+    public void NullDomPayloadsAreRejected()
+    {
+        // A payload is never absent in NBT, so a null is a caller mistake. It used to surface as some other
+        // exception at write time - an ArgumentNullException from the binary string codec, a
+        // NullReferenceException from the SNBT writer - instead of being stopped where it was introduced.
+        Assert.Throws<ArgumentNullException>(() => new NbtString(null!));
+        Assert.Throws<ArgumentNullException>(() => new NbtByteArray(null!));
+        Assert.Throws<ArgumentNullException>(() => new NbtIntArray(null!));
+        Assert.Throws<ArgumentNullException>(() => new NbtLongArray(null!));
+
+        // A with-expression replaces the property without running the constructor, so it can still put a null
+        // in. The SNBT writer then has to report it as invalid data rather than dereference it.
+        NbtString replaced = new NbtString("text") with { Value = null! };
+        Assert.Throws<InvalidDataException>(() => SnbtWriter.Write(replaced));
+        Assert.Throws<InvalidDataException>(() => SnbtWriter.Write(new NbtList(replaced)));
+    }
+
+    [Fact]
+    public void ANullElementInsideAContainerIsReportedByBothWriters()
+    {
+        NbtSerializer serializer = NbtSerializer.Create(NbtOptions.JavaNetworkEdition);
+
+        // The container constructors copy rather than scan, so a null can still be placed inside one. Both
+        // writers then have to say the same thing about it.
+        NbtList list = new(new NbtElement[] { null!, new NbtInt(1) });
+        Assert.Throws<InvalidDataException>(() => SerializeDom(serializer, list));
+        Assert.Throws<InvalidDataException>(() => SnbtWriter.Write(list));
+
+        NbtCompound compound = new(new Dictionary<string, NbtElement> { ["a"] = new NbtInt(1), ["b"] = null! });
+        Assert.Throws<InvalidDataException>(() => SerializeDom(serializer, compound));
+        Assert.Throws<InvalidDataException>(() => SnbtWriter.Write(compound));
     }
 
     [Fact]

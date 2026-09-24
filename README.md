@@ -312,6 +312,7 @@ a string allocates nothing beyond the string itself.
 
 - **Root values cannot be `null`.** `Serialize` throws `InvalidDataException` if the root value is absent.
 - **List elements cannot be `null`.** NBT has no null representation. `null` elements throw `InvalidDataException` at write time, regardless of whether `OptimizePrimitiveListsToArrays` is enabled.
+- **DOM payloads cannot be `null`.** `NbtString`, `NbtByteArray`, `NbtIntArray`, and `NbtLongArray` reject a null payload with `ArgumentNullException`, because NBT has no absent value. A `with` expression replaces the property without running the constructor, so it can still put one in; the writers then report `InvalidDataException` rather than dereferencing it.
 - **Dictionary keys must be `string`.** Any other key type throws `NotSupportedException` during converter construction.
 - **`NbtCompound` preserves insertion order.** `Keys`, `Values`, and enumeration follow insertion order, and that order decides both the SNBT text and the wire bytes, so it is documented rather than left to the backing collection. Equality and hashing are order-independent, matching NBT's own unordered-map semantics: two compounds with the same entries in different orders are equal.
 - **Enums map to the smallest integer tag for their underlying type.** `byte`/`sbyte` → `TAG_Byte`, `short`/`ushort` → `TAG_Short`, `int`/`uint` → `TAG_Int`, `long`/`ulong` → `TAG_Long`. No string-based names are emitted.
