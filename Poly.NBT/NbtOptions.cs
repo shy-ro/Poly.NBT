@@ -26,24 +26,41 @@ public enum NbtRootTagNaming : byte
 }
 
 /// <summary>Controls the NBT wire-format dialect.</summary>
+/// <remarks>
+/// <para>
+/// The four presets below are the dialects this library is meant to be used with. Every one of them enables
+/// <see cref="OptimizePrimitiveListsToArrays"/>, because every real Minecraft dialect writes primitive
+/// collections as the matching array tag.
+/// </para>
+/// <para>
+/// <see cref="default"/> is not a preset and is not intended to be one. It is nonetheless a coherent dialect -
+/// big-endian, Modified UTF-8, fixed-width numbers, a named root - that simply leaves both boolean capabilities
+/// switched off, so <see cref="OptimizePrimitiveListsToArrays"/> is <see langword="false"/> there. Because the
+/// type stores that flag as a plain <see langword="bool"/>, two instances compare equal exactly when their
+/// properties read the same, which keeps the value a usable dictionary key and a predictable <c>with</c> result.
+/// </para>
+/// </remarks>
 public readonly record struct NbtOptions
 {
-    private readonly byte _optimizePrimitiveListsToArrays;
-
     public NbtEndianness Endianness { get; init; }
     public NbtStringEncoding StringEncoding { get; init; }
     public NbtNumericEncoding NumericEncoding { get; init; }
     public NbtRootTagNaming RootTagNaming { get; init; }
+
+    /// <summary>Enables <c>TAG_Long_Array</c>. Java has supported it since 1.12; Bedrock never has.</summary>
     public bool SupportsLongArray { get; init; }
-    public bool OptimizePrimitiveListsToArrays
-    {
-        get => _optimizePrimitiveListsToArrays != 2;
-        init => _optimizePrimitiveListsToArrays = value ? (byte)1 : (byte)2;
-    }
+
+    /// <summary>
+    /// Writes <c>byte</c>/<c>sbyte</c>/<c>int</c>/<c>long</c> collections as the matching primitive array tag
+    /// instead of a homogeneous <c>TAG_List</c>. Both layouts are legal NBT and each is read back either way;
+    /// the array form is what Minecraft itself produces.
+    /// </summary>
+    public bool OptimizePrimitiveListsToArrays { get; init; }
 
     public static readonly NbtOptions JavaEdition = new()
     {
         SupportsLongArray = true,
+        OptimizePrimitiveListsToArrays = true,
     };
 
     public static readonly NbtOptions JavaNetworkEdition = JavaEdition with
@@ -56,6 +73,7 @@ public readonly record struct NbtOptions
         Endianness = NbtEndianness.LittleEndian,
         StringEncoding = NbtStringEncoding.Utf8WithEscapes,
         SupportsLongArray = false,
+        OptimizePrimitiveListsToArrays = true,
     };
 
     public static readonly NbtOptions BedrockNetworkEdition = BedrockEdition with

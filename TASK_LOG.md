@@ -1,5 +1,42 @@
 # Task Log
 
+## 2026-09-25 - Make NbtOptions value semantics honest
+
+### Scope
+
+Fix the one real correctness bug found by the audit: `NbtOptions` compared unequal to itself.
+
+`OptimizePrimitiveListsToArrays` was backed by a tri-state byte (0 or 1 meant "unset or true", 2 meant "false")
+so that `default(NbtOptions)` would read `true`. That worked for exactly one case and broke record equality for
+every other: two instances with identical property values had different hash codes and failed `Equals` and `==`.
+
+### Actual Changes
+
+- Replaced the tri-state byte with a plain `bool`. Equality, `GetHashCode`, `==` and `with` are now the
+  compiler-generated ones and agree with the properties by construction.
+- Declared `OptimizePrimitiveListsToArrays = true` explicitly on `JavaEdition` and `BedrockEdition`, which
+  previously inherited it from the sentinel. `JavaNetworkEdition` and `BedrockNetworkEdition` derive from those
+  through `with`, so all four presets keep their previous behavior.
+- Documented what `default(NbtOptions)` actually is: a coherent dialect rather than a preset - big-endian,
+  Modified UTF-8, fixed-width numbers, named root, with both boolean capabilities off.
+- `RequestedBehaviorTests`: replaced the test that pinned the sentinel with one that asserts every preset
+  enables the optimization, added `OptionsCompareTheWayTheirPropertiesRead` (equality, hash codes, `==`,
+  dictionary key, `with`) and `DefaultOptionsDescribeACoherentButUnoptimizedDialect`, which round-trips `byte[]`
+  and `long[]` through a `default(NbtOptions)` serializer and asserts they degrade to `TAG_List`.
+
+### Verification
+
+- `dotnet build Poly.NBT.slnx --no-restore`: 0 warnings, 0 errors.
+- `dotnet test Poly.NBT.slnx --no-restore`: 123/123 passed.
+- Presets are byte-for-byte unchanged, so no wire format moved. The only visible change is that
+  `default(NbtOptions)` and `new NbtOptions()` now report `OptimizePrimitiveListsToArrays == false`; that is the
+  point of the fix, and the new test documents it.
+
+### Known Issues and Next
+
+- `default(NbtOptions)` remains constructible and describes a dialect nobody uses. The README continues to steer
+  callers to the presets, which is the right consumer contract.
+
 ## 2026-09-25 - Avoid per-scalar buffers in the wire codecs
 
 ### Scope

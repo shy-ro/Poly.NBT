@@ -3,12 +3,47 @@ namespace Poly.NBT.Tests;
 public sealed class RequestedBehaviorTests
 {
     [Fact]
-    public void PrimitiveListOptimizationDefaultsToEnabled()
+    public void PrimitiveListOptimizationIsEnabledByEveryPreset()
     {
-        Assert.True(default(NbtOptions).OptimizePrimitiveListsToArrays);
-        Assert.True(new NbtOptions().OptimizePrimitiveListsToArrays);
         Assert.All(new[] { NbtOptions.JavaEdition, NbtOptions.JavaNetworkEdition, NbtOptions.BedrockEdition, NbtOptions.BedrockNetworkEdition },
             options => Assert.True(options.OptimizePrimitiveListsToArrays));
+    }
+
+    [Fact]
+    public void OptionsCompareTheWayTheirPropertiesRead()
+    {
+        // These two instances have identical property values, so they must be interchangeable everywhere a
+        // value-type comparison happens. The previous tri-state byte field broke all four of these.
+        NbtOptions implicitDefault = new();
+        NbtOptions explicitDefault = new() { OptimizePrimitiveListsToArrays = true };
+
+        Assert.Equal(default(NbtOptions), implicitDefault);
+        Assert.True(default(NbtOptions) == implicitDefault);
+        Assert.Equal(default(NbtOptions).GetHashCode(), implicitDefault.GetHashCode());
+        Assert.NotEqual(implicitDefault, explicitDefault);
+        Assert.NotEqual(implicitDefault.GetHashCode(), explicitDefault.GetHashCode());
+
+        Dictionary<NbtOptions, string> map = new() { [NbtOptions.JavaEdition] = "java" };
+        Assert.Equal("java", map[NbtOptions.JavaEdition with { }]);
+        Assert.False(map.ContainsKey(NbtOptions.JavaNetworkEdition));
+    }
+
+    [Fact]
+    public void DefaultOptionsDescribeACoherentButUnoptimizedDialect()
+    {
+        // default(NbtOptions) is not a preset, but it must not be half-built either: it reads and writes.
+        NbtSerializer serializer = NbtSerializer.Create(default);
+
+        byte[] bytes = serializer.SerializeUsingReflection(new byte[] { 1, 2, 3 }, "k");
+        Assert.Equal((byte)NbtTagType.List, bytes[0]);
+        Assert.Equal(new byte[] { 1, 2, 3 }, serializer.DeserializeUsingReflection<byte[]>(bytes));
+
+        byte[] longs = serializer.SerializeUsingReflection(new long[] { 1, 2 }, "k");
+        Assert.Equal((byte)NbtTagType.List, longs[0]);
+        Assert.Equal(new long[] { 1, 2 }, serializer.DeserializeUsingReflection<long[]>(longs));
+
+        Assert.False(default(NbtOptions).OptimizePrimitiveListsToArrays);
+        Assert.False(default(NbtOptions).SupportsLongArray);
     }
 
     [Fact]
