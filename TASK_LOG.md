@@ -1,5 +1,22 @@
 # Task Log
 
+## 2026-09-25 - Remove unused SnbtNumbers.TryParseInteger
+
+### Scope
+
+Remove dead code. `SnbtNumbers.TryParseInteger` was the only member with no call site.
+
+### Actual Changes
+
+- Deleted `SnbtNumbers.TryParseInteger`. A repository-wide search confirmed nothing referenced it; typed
+  arrays read their elements through `SnbtParser.ReadArrayElement`, which projects the result of
+  `TryParse` directly.
+
+### Verification
+
+- `dotnet build Poly.NBT.slnx --no-restore`: 0 warnings, 0 errors.
+- `dotnet test Poly.NBT.slnx --no-restore`: 112/112 passed.
+
 ## 2026-09-24 - Honor the SNBT dialect when writing
 
 ### Scope

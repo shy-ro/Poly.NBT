@@ -57,25 +57,6 @@ internal static partial class SnbtNumbers
             : ParseBased(token, index, radix, negative, options, out value, out error);
     }
 
-    /// <summary>Parses an integer-only literal for use inside a typed array, ignoring any declared suffix.</summary>
-    public static SnbtNumberStatus TryParseInteger(string token, SnbtOptions options, out long value, out string? error)
-    {
-        value = 0;
-        SnbtNumberStatus status = TryParse(token, options, out NbtElement? element, out error);
-        if (status != SnbtNumberStatus.Success) return status;
-
-        switch (element)
-        {
-            case NbtByte item: value = item.Value; return SnbtNumberStatus.Success;
-            case NbtShort item: value = item.Value; return SnbtNumberStatus.Success;
-            case NbtInt item: value = item.Value; return SnbtNumberStatus.Success;
-            case NbtLong item: value = item.Value; return SnbtNumberStatus.Success;
-            default:
-                error = $"'{token}' is not an integer and cannot appear in an NBT array.";
-                return SnbtNumberStatus.Invalid;
-        }
-    }
-
     private static SnbtNumberStatus ParseBased(string token, int index, int radix, bool negative, SnbtOptions options, out NbtElement? value, out string? error)
     {
         value = null;
