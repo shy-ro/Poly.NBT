@@ -120,15 +120,14 @@ internal class NbtEnumerableConverter<TEnumerable, TElement> : NbtConverter<TEnu
     {
         NbtTagType elementType = _serializer.ReadTagType(stream);
         int count = _serializer.Lengths.ReadCollectionLength(stream);
-        if (count == 0)
-        {
-            if (elementType != NbtTagType.End && ElementConverter.TagType != NbtTagType.End && elementType != ElementConverter.TagType)
-                throw new InvalidDataException("An empty NBT list has an incompatible element type.");
-        }
-        else
-        {
-            if (ElementConverter.TagType != NbtTagType.End) NbtSerializer.EnsureTagType(ElementConverter.TagType, elementType);
-        }
+
+        // The element type of an empty list carries no information - there are no elements for it to disagree
+        // with - and writers differ on what to put there: this library and Minecraft both write TAG_End, but the
+        // format does not require it. Reading therefore tolerates any element type when the count is zero, here
+        // and in the DOM, so the same bytes materialize into an empty collection on either path. A non-empty
+        // list still has to match the target element type.
+        if (count > 0 && ElementConverter.TagType != NbtTagType.End)
+            NbtSerializer.EnsureTagType(ElementConverter.TagType, elementType);
 
         return (count, elementType);
     }

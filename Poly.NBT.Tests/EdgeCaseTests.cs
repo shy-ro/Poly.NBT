@@ -98,6 +98,30 @@ public sealed class EdgeCaseTests
         Assert.Throws<InvalidDataException>(() => DeserializeDom(NbtSerializer.Create(NbtOptions.JavaNetworkEdition), document));
     }
 
+    [Theory]
+    [MemberData(nameof(Dialects))]
+    public void EmptyListElementTypeIsToleratedOnEveryPath(NbtOptions options)
+    {
+        NbtSerializer serializer = NbtSerializer.Create(options with { RootTagNaming = NbtRootTagNaming.Omitted });
+
+        // An empty TAG_List that declares TAG_String elements: structurally valid, and the DOM and the typed
+        // paths have to agree on it. The declared type of an empty list is not validated - there is nothing for
+        // it to disagree with - so both must produce an empty collection whatever it is materialized into. The
+        // bytes come from the writer, whose empty list declares TAG_End, with that one byte patched, so the
+        // length encoding stays whatever the dialect uses.
+        byte[] document = SerializeDom(serializer, new NbtList());
+        Assert.Equal((byte)NbtTagType.End, document[1]);
+        document[1] = (byte)NbtTagType.String;
+
+        Assert.Empty(Assert.IsType<NbtList>(DeserializeDom(serializer, document)));
+        Assert.Empty(serializer.DeserializeUsingReflection<List<int>>(document)!);
+        Assert.Empty(serializer.DeserializeUsingReflection<List<string>>(document)!);
+
+        // The tolerance stops at the length: a non-empty list still has to match its target element type.
+        byte[] mismatched = SerializeDom(serializer, new NbtList(new NbtString("")));
+        Assert.Throws<InvalidDataException>(() => serializer.DeserializeUsingReflection<List<int>>(mismatched));
+    }
+
     [Fact]
     public void UnknownTagTypeIsRejected()
     {

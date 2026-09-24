@@ -115,6 +115,17 @@ reject streams larger than a fixed number of bytes before handing them to `NbtSe
 `NbtAccounter` solves the same problem with running total accounting; `MaxCollectionLength` is the
 per-value equivalent.
 
+### Lists
+
+A `TAG_List` is homogeneous: the header declares one element type and every element has to match it. The
+empty list is the single exception. Its element type carries no information — there are no elements for it to
+disagree with — and writers differ on what to put there: this library and Minecraft both write `TAG_End`, but
+the format does not require it. Reading therefore tolerates any element type when the length is zero, on the
+DOM and the typed paths alike, so `09 08 00 00 00 00` (an empty list declared `TAG_String`) reads as an empty
+list whatever it is materialized into, and the two paths cannot disagree about it. Writing still emits
+`TAG_End`. A non-empty list that declares `TAG_End`, or whose elements disagree with the declared type, is
+still rejected.
+
 ### Malformed input
 
 Three exception types divide the ways a document can be wrong, so a caller can tell bad bytes from bytes it

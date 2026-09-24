@@ -1,5 +1,53 @@
 # Task Log
 
+## 2026-09-25 - Tolerate any element type on an empty list
+
+### Scope
+
+Fix the audit's P2-5. The same legal bytes were read differently by the two entry points: `09 08 00 00 00 00`
+(an empty `TAG_List` declaring `TAG_String` elements) produced an empty `NbtList` through the DOM but threw
+`InvalidDataException: An empty NBT list has an incompatible element type.` through `List<int>`. The audit
+offered two directions and a documentation fallback, and left the choice open.
+
+The report's own compatibility matrix settles it. Its `TAG_List` empty-list row states the expected behavior
+as "write `TAG_End`, tolerate on read", which is the DOM's behavior, not the typed path's. The bytes are
+structurally valid: the element-type field must hold a tag id, but nothing in the format says an empty list
+has to declare `TAG_End`. Minecraft normalizes to `TAG_End` on write, and this library does too, so the field
+carries no information when the length is zero - there are no elements for it to disagree with. Rejecting it
+only turned a writer convention into a reader requirement, and only on the typed path, which is exactly the
+inconsistency the DOM never had.
+
+### Actual Changes
+
+- `NbtEnumerableConverter.ReadHeader` lost its `count == 0` branch. The element-type check now runs only when
+  `count > 0`, so an empty list accepts any declared element type on the enumerable, mutable-enumerable, and
+  parameterized-enumerable paths alike (all three read the header through this one method). A non-empty list
+  whose declared type disagrees with the target element type, or that declares `TAG_End`, is still rejected.
+- `EmptyListElementTypeIsToleratedOnEveryPath` runs over all four presets. It takes the writer's own empty
+  list (which declares `TAG_End`), patches the element-type byte to `TAG_String`, and asserts that the DOM,
+  `List<int>`, and `List<string>` all produce an empty collection. Building the bytes from the writer keeps
+  the length encoding dialect-correct instead of hardcoding four-byte lengths that a VarInt dialect misreads.
+  The same test asserts that a one-element string list still fails as `List<int>`, so the tolerance is pinned
+  to the empty case and not to lists in general.
+- README gained a `Lists` section stating the rule and the reason, next to the length limits it qualifies.
+
+### Verification
+
+- `dotnet build Poly.NBT.slnx --no-restore`: 0 warnings, 0 errors.
+- `dotnet test Poly.NBT.slnx --no-restore`: 205/205 passed (previously 201; the new test is a four-dialect
+  theory).
+- `dotnet format Poly.NBT.slnx --no-restore --verify-no-changes --severity warn`: passed.
+- No existing test had asserted the old strict behavior, so nothing was weakened to make this pass.
+
+### Known Issues and Next
+
+- The DOM still normalizes an empty list's element type to `TAG_End` on write, so a read/write round trip of
+  `09 08 00 00 00 00` is not byte-identical. That is a property of the DOM, which has no field to store the
+  declared type in, and is now the documented behavior rather than a surprise.
+- The P3 series is next: `SnbtNumbers.Decimal` temporary strings, the `SuffixLetters.Contains` scan, the
+  unconditional `StringBuilder` in `ReadQuotedString`, null-constructible DOM arrays, a missing
+  `.editorconfig`, package metadata, an AOT smoke project, and the tracked `TASK_LOG.md` decision.
+
 ## 2026-09-25 - Document the cost of the convenience conversions and span overloads
 
 ### Scope
