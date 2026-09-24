@@ -1,5 +1,47 @@
 # Task Log
 
+## 2026-09-25 - Close the audit: fix the ignore rule and record the benchmark decision
+
+### Scope
+
+The last two open audit items are housekeeping rather than defects, and both are decisions rather than
+fixes, so they close together: P3-8, where `.gitignore` declared `TASK_LOG.md` ignored while the file was
+tracked, and the benchmark project that the coverage table listed as missing.
+
+### Actual Changes
+
+- `.gitignore` no longer lists `TASK_LOG.md`, and the file stays tracked. The log is kept deliberately: it
+  records the scope, the reasoning, and the verification for every commit in this series, which is history
+  the repository would otherwise lose, and it is actively maintained rather than vestigial.
+- README `Performance` closes with the benchmark decision and names the allocation tests as the guard that
+  stands in for one. The same paragraph fixes a stale count - the section said "Three properties" while
+  carrying four bullets after the SNBT entry was added.
+
+### Verification
+
+- `git check-ignore -v TASK_LOG.md` now reports nothing; before the change it also reported nothing, which
+  is the whole reason this went unnoticed. `git check-ignore --no-index -v TASK_LOG.md` reported
+  `.gitignore:14`, because without `--no-index` `check-ignore` silently omits files that are tracked, so the
+  rule looked as though it matched nothing. `git ls-files --error-unmatch TASK_LOG.md` confirms the file is
+  tracked both before and after.
+- `AGENTS.md` is listed in `.gitignore` and is *not* tracked, so it is correct as written and was left
+  alone. The audit's earlier note calling it a second instance of the same problem was wrong; it is the only
+  one.
+- `dotnet build Poly.NBT.slnx --no-restore`: 0 warnings, 0 errors. `dotnet test Poly.NBT.slnx --no-restore`:
+  209/209 passed. `dotnet format --verify-no-changes --severity warn`: clean. No source or test file was
+  touched by this entry.
+
+### Known Issues and Next
+
+The audit is closed. Two items remain open by decision rather than by oversight, and both are stated in the
+README rather than left to be rediscovered:
+
+- Native AOT is not verified end to end - see the P3-7 entry above for what was tried and what the analyzer
+  pass does cover.
+- `\N{name}` in SNBT is refused by design rather than implemented - see the P1-3 entry. A partial Unicode
+  name table would accept some names and reject others with no way for a caller to tell a misspelling from a
+  gap, so it is recorded in `Limitations` instead.
+
 ## 2026-09-25 - Document the AOT guarantee instead of adding an AOT smoke project
 
 ### Scope

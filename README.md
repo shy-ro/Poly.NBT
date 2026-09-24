@@ -277,7 +277,7 @@ same value, which the tests assert rather than assume.
 ## Performance
 
 The readers and writers work directly on a `Stream` and never buffer a whole document, so an object graph is
-materialized once. Three properties are worth knowing before putting this in a hot loop.
+materialized once. Several properties are worth knowing before putting this in a hot loop.
 
 - **The `ReadOnlySpan<byte>` overloads copy.** They exist so that a caller holding a buffer does not have to
   construct a `Stream`, not to avoid a copy — the readers are stream-based and the BCL has no read-only span
@@ -301,6 +301,12 @@ Primitive arrays transfer in one call each for a fixed-width dialect: 100,000 el
 `ReadExactly` or `Write` over `MemoryMarshal.AsBytes`, with an `ArrayPool` byte-swap only when the dialect's
 byte order disagrees with the machine's. Scalars are read through `stackalloc` buffers, so reading an `int` or
 a string allocates nothing beyond the string itself.
+
+The allocation tests in `Poly.NBT.Tests` are the standing guard on these paths. Each asserts a per-item or
+per-character byte budget, so a change that reintroduces a temporary fails the suite rather than only showing
+up as a slower build. There is deliberately no `BenchmarkDotNet` project: a threshold that runs in CI is
+deterministic where a benchmark on shared hardware is not, and the comparisons quoted above came from
+throwaway probes run against the two revisions rather than from a harness kept in the repository.
 
 ## Limitations
 
