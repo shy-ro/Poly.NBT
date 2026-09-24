@@ -1,5 +1,41 @@
 # Task Log
 
+## 2026-09-25 - Document the SNBT quote-selection rule
+
+### Scope
+
+Close the audit's P1-6 as a documented, deliberate difference rather than a change. The Wiki describes the
+quote-selection rule for the `/data get` path, which always quotes and picks the opposite of whichever quote
+mark appears first; this writer produces bare strings wherever the grammar allows them, so it is the
+bare-where-possible path, and the two rules are not comparable input for input.
+
+| Value | Written | Wiki's `/data get` rule |
+|:---|:---|:---|
+| `a"b` | `'a"b'` | agree |
+| `a'b` | `"a'b"` | agree |
+| `a"b'c` | `"a\"b'c"` | `'a"b\'c'` |
+
+### Actual Changes
+
+- README gained a "Quote selection" subsection stating the rule, naming the `/data get` path it differs
+  from, and recording that both forms parse to the same value.
+- `SnbtWriterTests.PicksTheQuoteCharacterThatNeedsNoEscaping` pins all four cases and asserts the round trip
+  of the both-kinds form, so the claim in the README is checked rather than stated.
+
+### Verification
+
+- `dotnet build Poly.NBT.slnx --no-restore`: 0 warnings, 0 errors.
+- `dotnet test Poly.NBT.slnx --no-restore`: 194/194 passed (previously 193).
+- `dotnet format Poly.NBT.slnx --no-restore --verify-no-changes --severity warn`: passed.
+
+### Known Issues and Next
+
+- Deliberately not changed. Adopting the Wiki's rule would mean either always quoting - which loses the
+  bare-string output that makes hand-written SNBT readable and that the rest of the writer is built around -
+  or applying a rule the Wiki records for a different code path. The difference is textual only.
+- Next: the P2 list (per-scalar allocation is done; the DOM array write path, `ToElement`/`FromElement` cost,
+  key-order and span-copy documentation remain) and the P3 list.
+
 ## 2026-09-25 - Implement the full SNBT string escape set
 
 ### Scope

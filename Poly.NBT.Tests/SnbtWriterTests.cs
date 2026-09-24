@@ -94,6 +94,22 @@ public sealed class SnbtWriterTests
     }
 
     [Fact]
+    public void PicksTheQuoteCharacterThatNeedsNoEscaping()
+    {
+        Assert.Equal("'a\"b'", SnbtWriter.Write(new NbtString("a\"b")));
+        Assert.Equal("\"a'b\"", SnbtWriter.Write(new NbtString("a'b")));
+
+        // With both kinds present there is no escape-free choice, so double quotes win and the double quotes
+        // inside are escaped. The alternative - taking the opposite of whichever quote appears first - is the
+        // rule the Wiki records for the always-quoted /data get path, which is a different path from this
+        // writer's bare-where-possible output. Both forms parse to the same value, which is asserted here
+        // rather than assumed.
+        Assert.Equal("\"a\\\"b'c\"", SnbtWriter.Write(new NbtString("a\"b'c")));
+        Assert.Equal("\"a'b\\\"c\"", SnbtWriter.Write(new NbtString("a'b\"c")));
+        Assert.Equal(new NbtString("a\"b'c"), SnbtParser.Parse(SnbtWriter.Write(new NbtString("a\"b'c"))));
+    }
+
+    [Fact]
     public void WrittenStringsRoundTrip()
     {
         string[] values = ["hello", "_foo", "hello.world", string.Empty, "1", "1b", "-1", "0x10", "true", "false",

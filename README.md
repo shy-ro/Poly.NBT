@@ -247,6 +247,16 @@ falling back to a bare string, even though this library's parser does recover. O
 rescue is a heterogeneous `NbtList`: the element type suffixes cannot express it, so writing such a list
 and parsing it back with `v1_13` fails.
 
+#### Quote selection
+
+When a string does need quoting, the writer picks the quote character that needs no escaping: `a"b` is
+written `'a"b'` and `a'b` is written `"a'b"`. With both kinds present there is no escape-free choice, so
+double quotes win and the double quotes inside are escaped — `a"b'c` becomes `"a\"b'c"`. The Wiki's
+"Conversion to SNBT" section records a different rule, picking the opposite of whichever quote appears
+first, for the `/data get` path. That path always quotes, whereas this writer produces bare strings wherever
+the grammar allows them, so the two are not the same rule applied to the same input; both forms parse to the
+same value, which the tests assert rather than assume.
+
 ## Limitations
 
 - **`\N{name}` is not supported.** SNBT defines thirteen string escapes; twelve are implemented in both quote styles, and the thirteenth indexes Unicode's name database (`\N{Snowman}`). A partial table would accept some names and silently reject others with no way for a caller to tell an unsupported name from a misspelled one, so it is refused with an error that names it. Twelve of thirteen is enough for every escape the game emits, since Minecraft does not write `\N{name}` either.
