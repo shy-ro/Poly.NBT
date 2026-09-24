@@ -115,7 +115,9 @@ NbtDocument document = SnbtParser.ParseDocument(new StringReader(text));
 `Offset` of the failure) on malformed input. SNBT has no root tag name, so `ParseDocument` returns a
 document whose `RootTagName` is `string.Empty`. `SnbtWriter` emits compact single-line output:
 byte/short/long literals carry their `b`/`s`/`L` suffixes, floating point uses `"R"` round-trip
-formatting followed by `f`/`d`, and strings stay bare unless quoting is required.
+formatting followed by `f`/`d`, and strings stay bare unless quoting is required. Every overload has a
+counterpart that takes an `SnbtOptions` value; `SnbtWriter.Write(element, SnbtOptions.v1_13)` therefore
+produces text the classic dialect can read back.
 
 ### Dialects
 
@@ -134,9 +136,24 @@ Minecraft 1.21.5; `v1_13` disables every one of them and `v1_21_5` enables every
 | `AllowSignednessSuffixes` | No | Yes |
 | `AllowSnbtOperations` (`bool(...)`, `uuid(...)`) | No | Yes |
 
-The parameterless parser overloads use `SnbtOptions.v1_21_5`; there is deliberately no `default`
-preset. `NaN`/`Infinity` literals, the rejection of `i`/`I` integer suffixes, string-key compound
-rules, and typed-array suffix handling are dialect-independent.
+The parameterless parser and writer overloads use `SnbtOptions.v1_21_5`; there is deliberately no
+`default` preset. `NaN`/`Infinity` literals, the rejection of `i`/`I` integer suffixes, string-key
+compound rules, and typed-array suffix handling are dialect-independent.
+
+#### Dialect effect on output
+
+Only one flag changes the written text. With `AllowScientificNotation` disabled, floating-point values
+are expanded into equivalent plain decimal literals — `1E+20d` is written as `100000000000000000000.0d` —
+so the classic dialect can read them back. The expansion moves digits rather than re-formatting the
+value, so the shortest round-trippable representation is preserved exactly. The other eight flags
+describe input only: the writer never emits trailing commas, hexadecimal or binary literals,
+underscores, signedness suffixes, or `bool()`/`uuid()` operations.
+
+String quoting is dialect-independent on purpose. A bare string is only written when no dialect would
+read it as a number, because the classic dialect treats a number-like token such as `.5` as a malformed
+number and raises `SnbtParseException` instead of falling back to a bare string; quoted strings are valid
+in every dialect. One case the writer cannot rescue is a heterogeneous `NbtList`: the element type
+suffixes cannot express it, so writing such a list and parsing it back with `v1_13` fails.
 
 ## Limitations
 

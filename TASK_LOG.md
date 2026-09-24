@@ -1,5 +1,43 @@
 # Task Log
 
+## 2026-09-24 - Honor the SNBT dialect when writing
+
+### Scope
+
+Make `SnbtWriter` aware of the target dialect so classic (`v1_13`) text can be produced, resolving the
+round-trip limitation recorded in the previous entry. Scope was limited to the writer and its tests; the
+parser and `SnbtOptions` are unchanged.
+
+### Actual Changes
+
+- Added `SnbtOptions` overloads to every `SnbtWriter.Write` entry point (string- and `TextWriter`-based,
+  element- and document-based), with the parameterless overloads delegating to `SnbtOptions.v1_21_5`.
+- Added internal exponent expansion: when `AllowScientificNotation` is disabled, the `"R"` rendering is
+  rewritten as an equivalent plain decimal literal by moving digits instead of re-formatting the value,
+  preserving shortest-round-trip fidelity. Applies to `float` and `double`, including subnormals.
+- Kept string quoting dialect-independent and conservative, documenting the reason: the classic dialect
+  rejects a number-like token such as `.5` as malformed rather than reading it as a bare string, so
+  quoting must follow the most permissive dialect. An earlier attempt to make quoting dialect-aware was
+  reverted after a test proved the classic parser throws on bare `.5`.
+- Documented in the type remarks which flags can affect output and that a heterogeneous `NbtList` cannot
+  be represented in a dialect without `AllowHeterogeneousLists`.
+- Added `SnbtWriterDialectTests` covering exponent-free output for extreme values, round-trips under both
+  dialects, conservative quoting, and the `TextWriter` overloads.
+- Updated `README.md` with a "Dialect effect on output" section.
+
+### Verification
+
+- `dotnet build Poly.NBT.slnx --no-restore`: 0 warnings, 0 errors.
+- `dotnet test Poly.NBT.slnx --no-restore`: 112/112 passed (previously 106).
+- `dotnet format Poly.NBT.slnx --no-restore --verify-no-changes --severity warn`: passed.
+- `git diff --check`: passed.
+
+### Known Issues and Next
+
+- `double.Epsilon` and other subnormals expand to literals over 300 characters under `v1_13`; correct but
+  verbose. A shorter form would require a dialect-specific literal the classic grammar does not accept.
+- Supersedes the `SnbtWriter` bullet of the previous entry; the remaining known issues there still stand.
+
 ## 2026-09-24 - Add SNBT parser and writer
 
 ### Scope
