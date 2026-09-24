@@ -18,9 +18,9 @@ internal abstract class NbtNumericCodec
 
 internal sealed class BigEndianNumericCodec : NbtNumericCodec
 {
-    public override short ReadInt16(Stream stream) => BinaryPrimitives.ReadInt16BigEndian(StreamIO.ReadExactly(stream, 2));
-    public override int ReadInt32(Stream stream) => BinaryPrimitives.ReadInt32BigEndian(StreamIO.ReadExactly(stream, 4));
-    public override long ReadInt64(Stream stream) => BinaryPrimitives.ReadInt64BigEndian(StreamIO.ReadExactly(stream, 8));
+    public override short ReadInt16(Stream stream) => StreamIO.ReadInt16BigEndian(stream);
+    public override int ReadInt32(Stream stream) => StreamIO.ReadInt32BigEndian(stream);
+    public override long ReadInt64(Stream stream) => StreamIO.ReadInt64BigEndian(stream);
     public override float ReadSingle(Stream stream) => BitConverter.Int32BitsToSingle(ReadInt32(stream));
     public override double ReadDouble(Stream stream) => BitConverter.Int64BitsToDouble(ReadInt64(stream));
     public override void WriteInt16(Stream stream, short value) => StreamIO.Write(stream, value, BinaryPrimitives.WriteInt16BigEndian);
@@ -32,9 +32,9 @@ internal sealed class BigEndianNumericCodec : NbtNumericCodec
 
 internal class LittleEndianNumericCodec : NbtNumericCodec
 {
-    public override short ReadInt16(Stream stream) => BinaryPrimitives.ReadInt16LittleEndian(StreamIO.ReadExactly(stream, 2));
-    public override int ReadInt32(Stream stream) => BinaryPrimitives.ReadInt32LittleEndian(StreamIO.ReadExactly(stream, 4));
-    public override long ReadInt64(Stream stream) => BinaryPrimitives.ReadInt64LittleEndian(StreamIO.ReadExactly(stream, 8));
+    public override short ReadInt16(Stream stream) => StreamIO.ReadInt16LittleEndian(stream);
+    public override int ReadInt32(Stream stream) => StreamIO.ReadInt32LittleEndian(stream);
+    public override long ReadInt64(Stream stream) => StreamIO.ReadInt64LittleEndian(stream);
     public override float ReadSingle(Stream stream) => BitConverter.Int32BitsToSingle(ReadInt32(stream));
     public override double ReadDouble(Stream stream) => BitConverter.Int64BitsToDouble(ReadInt64(stream));
     public override void WriteInt16(Stream stream, short value) => StreamIO.Write(stream, value, BinaryPrimitives.WriteInt16LittleEndian);
@@ -48,8 +48,8 @@ internal sealed class VarIntNumericCodec : LittleEndianNumericCodec
 {
     public override int ReadInt32(Stream stream) => VarInt.ZigZagDecode32(VarInt.ReadUInt32(stream));
     public override long ReadInt64(Stream stream) => VarInt.ZigZagDecode64(VarInt.ReadUInt64(stream));
-    public override float ReadSingle(Stream stream) => BitConverter.Int32BitsToSingle(BinaryPrimitives.ReadInt32LittleEndian(StreamIO.ReadExactly(stream, 4)));
-    public override double ReadDouble(Stream stream) => BitConverter.Int64BitsToDouble(BinaryPrimitives.ReadInt64LittleEndian(StreamIO.ReadExactly(stream, 8)));
+    public override float ReadSingle(Stream stream) => BitConverter.Int32BitsToSingle(StreamIO.ReadInt32LittleEndian(stream));
+    public override double ReadDouble(Stream stream) => BitConverter.Int64BitsToDouble(StreamIO.ReadInt64LittleEndian(stream));
     public override void WriteInt32(Stream stream, int value) => VarInt.WriteUInt32(stream, VarInt.ZigZagEncode(value));
     public override void WriteInt64(Stream stream, long value) => VarInt.WriteUInt64(stream, VarInt.ZigZagEncode(value));
     public override void WriteSingle(Stream stream, float value) => StreamIO.Write(stream, BitConverter.SingleToInt32Bits(value), BinaryPrimitives.WriteInt32LittleEndian);

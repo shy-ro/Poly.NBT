@@ -1,3 +1,5 @@
+using System.Buffers.Binary;
+
 namespace Poly.NBT.Internal;
 
 internal static class StreamIO
@@ -10,6 +12,59 @@ internal static class StreamIO
         byte[] buffer = GC.AllocateUninitializedArray<byte>(length);
         stream.ReadExactly(buffer);
         return buffer;
+    }
+
+    public static void ReadExactly(Stream stream, Span<byte> destination) => stream.ReadExactly(destination);
+
+    /// <summary>
+    /// Reads exactly the requested number of bytes from the stream without allocating. Every scalar in the
+    /// wire format goes through one of these helpers, so the intermediate buffer stays on the stack.
+    /// </summary>
+    public static short ReadInt16BigEndian(Stream stream)
+    {
+        Span<byte> buffer = stackalloc byte[sizeof(short)];
+        stream.ReadExactly(buffer);
+        return BinaryPrimitives.ReadInt16BigEndian(buffer);
+    }
+
+    /// <inheritdoc cref="ReadInt16BigEndian(Stream)"/>
+    public static int ReadInt32BigEndian(Stream stream)
+    {
+        Span<byte> buffer = stackalloc byte[sizeof(int)];
+        stream.ReadExactly(buffer);
+        return BinaryPrimitives.ReadInt32BigEndian(buffer);
+    }
+
+    /// <inheritdoc cref="ReadInt16BigEndian(Stream)"/>
+    public static long ReadInt64BigEndian(Stream stream)
+    {
+        Span<byte> buffer = stackalloc byte[sizeof(long)];
+        stream.ReadExactly(buffer);
+        return BinaryPrimitives.ReadInt64BigEndian(buffer);
+    }
+
+    /// <inheritdoc cref="ReadInt16BigEndian(Stream)"/>
+    public static short ReadInt16LittleEndian(Stream stream)
+    {
+        Span<byte> buffer = stackalloc byte[sizeof(short)];
+        stream.ReadExactly(buffer);
+        return BinaryPrimitives.ReadInt16LittleEndian(buffer);
+    }
+
+    /// <inheritdoc cref="ReadInt16BigEndian(Stream)"/>
+    public static int ReadInt32LittleEndian(Stream stream)
+    {
+        Span<byte> buffer = stackalloc byte[sizeof(int)];
+        stream.ReadExactly(buffer);
+        return BinaryPrimitives.ReadInt32LittleEndian(buffer);
+    }
+
+    /// <inheritdoc cref="ReadInt16BigEndian(Stream)"/>
+    public static long ReadInt64LittleEndian(Stream stream)
+    {
+        Span<byte> buffer = stackalloc byte[sizeof(long)];
+        stream.ReadExactly(buffer);
+        return BinaryPrimitives.ReadInt64LittleEndian(buffer);
     }
 
     public static unsafe void Write<T>(Stream stream, T value, SpanWriter<T> writer) where T : unmanaged

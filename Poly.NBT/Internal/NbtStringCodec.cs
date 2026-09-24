@@ -1,22 +1,48 @@
+using System.Buffers;
 using System.Text;
 
 namespace Poly.NBT.Internal;
 
 internal sealed class NbtStringCodec(NbtStringEncoding encoding, NbtLengthCodec lengths)
 {
+    /// <summary>Strings at or below this encoded size are decoded from a stack buffer instead of the pool.</summary>
+    private const int StackBufferBytes = 256;
+
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
 
     public string Read(Stream stream)
     {
-        byte[] bytes = StreamIO.ReadExactly(stream, lengths.ReadStringLength(stream));
-        return encoding switch
+        int length = lengths.ReadStringLength(stream);
+        if (length == 0) return string.Empty;
+
+        if (length <= StackBufferBytes)
         {
-            NbtStringEncoding.ModifiedUtf8 => ModifiedUtf8.Decode(bytes),
-            NbtStringEncoding.Utf8 => StrictUtf8.GetString(bytes),
-            NbtStringEncoding.Utf8WithEscapes => Utf8WithEscapes.Decode(bytes),
-            _ => throw new InvalidOperationException(),
-        };
+            Span<byte> buffer = stackalloc byte[StackBufferBytes];
+            Span<byte> encoded = buffer[..length];
+            stream.ReadExactly(encoded);
+            return Decode(encoded);
+        }
+
+        byte[] rented = ArrayPool<byte>.Shared.Rent(length);
+        try
+        {
+            Span<byte> encoded = rented.AsSpan(0, length);
+            stream.ReadExactly(encoded);
+            return Decode(encoded);
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(rented);
+        }
     }
+
+    private string Decode(ReadOnlySpan<byte> bytes) => encoding switch
+    {
+        NbtStringEncoding.ModifiedUtf8 => ModifiedUtf8.Decode(bytes),
+        NbtStringEncoding.Utf8 => StrictUtf8.GetString(bytes),
+        NbtStringEncoding.Utf8WithEscapes => Utf8WithEscapes.Decode(bytes),
+        _ => throw new InvalidOperationException(),
+    };
 
     public void Write(Stream stream, string value)
     {

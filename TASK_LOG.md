@@ -1,5 +1,43 @@
 # Task Log
 
+## 2026-09-25 - Avoid per-scalar buffers in the wire codecs
+
+### Scope
+
+Remove the per-scalar allocation in the read path. `StreamIO.ReadExactly(Stream, int)` allocated a fresh
+`byte[]` on every call, and every scalar in the wire format went through it, so decoding one 4-byte `int`
+produced 24 bytes of garbage; `NbtStringCodec.Read` did the same for every string.
+
+### Actual Changes
+
+- `StreamIO` gained `stackalloc`-backed helpers for the six integer reads (16/32/64-bit, both byte orders) plus
+  a `Span<byte>` overload of `ReadExactly`. The array-returning overload stays, because byte arrays genuinely
+  need an owned buffer and it is now the only allocation left in the read path.
+- `BigEndianNumericCodec`, `LittleEndianNumericCodec` and `VarIntNumericCodec` now delegate to those helpers;
+  all three are allocation-free for reads. The three `FixedArrayIO` fast paths already bypassed them.
+- `NbtStringCodec.Read` reads through a 256-byte stack buffer and falls back to `ArrayPool<byte>.Shared` above
+  that, then decodes straight from the `ReadOnlySpan<byte>` (the three decoders already accepted spans).
+
+### Verification
+
+- `dotnet build Poly.NBT.slnx --no-restore`: 0 warnings, 0 errors.
+- `dotnet test Poly.NBT.slnx --no-restore`: 121/121 passed. The 118 pre-existing tests pass untouched, which is
+  the point: no public API and no wire format changed.
+- Measured on the DOM path (Release): reading `int[200]` fell from 7,344 to 912 bytes per document, i.e. from
+  32.7 to 0.6 bytes of garbage per 4-byte integer. A 200-entry compound of ints fell from 127.9 to 95.9 bytes
+  per key/value pair; the remainder is the `NbtInt` values and key strings the DOM has to own.
+- `AllocationTests` pins the new behavior with delta-based assertions. It diffs two payload sizes so the fixed
+  PolyType converter-cache lookup (about 448 bytes per `Deserialize` call, unrelated to the codecs) cancels
+  out. Measured per-element cost is now exactly the result array - 4 bytes per `int`, 2 bytes per character.
+
+### Known Issues and Next
+
+- The writer's `Utf8WithEscapes.Encode` and `ModifiedUtf8.Encode` still build a `byte[]` per string. That is the
+  output buffer rather than throw-away garbage, so it was left alone.
+- A single `Deserialize` call allocates roughly 448 bytes in the PolyType `MultiProviderTypeCache` lookup. That
+  is a per-call, not per-element, cost inside PolyType and is worth a separate look if hot single-scalar loops
+  matter.
+
 ## 2026-09-25 - Stream SnbtWriter output to TextWriter
 
 ### Scope
