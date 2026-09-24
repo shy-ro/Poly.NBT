@@ -1,4 +1,4 @@
-﻿using System.Globalization;
+using System.Globalization;
 using System.Text;
 using Poly.NBT.Dom;
 
@@ -19,6 +19,11 @@ namespace Poly.NBT.Snbt;
 /// accepts and cannot be selected by the writer, which never emits trailing commas, hexadecimal or binary
 /// literals, underscores, signedness suffixes, or <c>bool()</c>/<c>uuid()</c> operations, and always writes
 /// explicit type suffixes on numbers.
+/// </para>
+/// <para>
+/// Numbers are written so that the text matches what Minecraft prints for the same value, which keeps
+/// golden files, diffs, and checksums over SNBT output meaningful. Floating-point literals follow Java's
+/// <c>Double.toString</c>/<c>Float.toString</c> shape; see <see cref="AppendFloatLiteral"/> for the exact rules.
 /// </para>
 /// <para>
 /// A heterogeneous <see cref="NbtList"/> cannot be represented in a dialect without
@@ -228,66 +233,114 @@ public static class SnbtWriter
         writer.Write(suffix);
     }
 
-    /// <summary>Writes the body of a floating-point literal, followed by nothing: the caller writes the suffix.</summary>
+    /// <summary>Writes the body of a floating-point literal. The caller writes the type suffix afterwards.</summary>
+    /// <param name="writer">The destination.</param>
+    /// <param name="text">The runtime's shortest round-trippable (<c>"R"</c>) representation of the value.</param>
+    /// <param name="options">The dialect, which decides whether an exponent may be used at all.</param>
+    /// <remarks>
+    /// <para>
+    /// The digits come from the <c>"R"</c> format but the shape follows Java's
+    /// <c>Double.toString</c>/<c>Float.toString</c>, which is what Minecraft itself prints:
+    /// </para>
+    /// <list type="bullet">
+    /// <item><description>The mantissa always keeps a decimal point and at least one digit after it: <c>1.0E20</c>, not <c>1E+20</c>.</description></item>
+    /// <item><description>The exponent carries no <c>+</c> and no leading zeros: <c>1.2345678901234568E17</c>, not <c>1.2345678901234568E+17</c>.</description></item>
+    /// <item><description><c>E</c>-notation is used outside <c>[10^-3, 10^7)</c>; the <c>"R"</c> format stays plain until <c>10^15</c>.</description></item>
+    /// </list>
+    /// <para>
+    /// Divergent text for the same value is not a parse error - Java reads both forms - but it turns up as a
+    /// stable false positive in any text diff, checksum, or cache key computed over SNBT output, so the shapes
+    /// are aligned. Digit selection can still differ from Java for a handful of extreme subnormals such as
+    /// <c>double.Epsilon</c>, where the two runtimes pick different shortest representations of the same value;
+    /// both parse back to that value.
+    /// </para>
+    /// <para>
+    /// When <see cref="SnbtOptions.AllowScientificNotation"/> is off, an exponent is not an option and the
+    /// digits are moved into an equivalent plain decimal instead. Nothing is re-rounded: the placement is
+    /// arithmetic on the shortest representation, so the round-trip guarantee survives.
+    /// </para>
+    /// </remarks>
     private static void AppendFloatLiteral(TextWriter writer, ReadOnlySpan<char> text, SnbtOptions options)
     {
-        int marker = text.IndexOfAny('E', 'e');
+        bool negative = text.Length > 0 && text[0] == '-';
+        ReadOnlySpan<char> mantissa = negative ? text[1..] : text;
+        int exponent = 0;
 
-        if (marker >= 0 && !options.AllowScientificNotation)
+        int marker = mantissa.IndexOfAny('E', 'e');
+        if (marker >= 0)
         {
-            AppendPlainDecimal(writer, text, marker);
+            exponent = int.Parse(mantissa[(marker + 1)..], NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture);
+            mantissa = mantissa[..marker];
+        }
+
+        // Reduce the literal to significant digits plus the position of its decimal point. "100", "1E2" and
+        // "1.00E+2" all describe the same number and have to converge here, because the target notation is
+        // chosen from the value rather than from the input shape. The "R" format yields at most 17 significant
+        // digits, so the buffer always covers the mantissa.
+        Span<char> digits = stackalloc char[32];
+        int digitCount = 0;
+        int integerDigits = 0;
+        bool seenPoint = false;
+        foreach (char character in mantissa)
+        {
+            if (character == '.')
+            {
+                seenPoint = true;
+                continue;
+            }
+
+            digits[digitCount++] = character;
+            if (!seenPoint) integerDigits++;
+        }
+
+        int point = integerDigits + exponent;
+        int first = 0;
+        while (first < digitCount && digits[first] == '0') first++;
+        int last = digitCount;
+        while (last > first && digits[last - 1] == '0') last--;
+
+        if (negative) writer.Write('-');
+
+        if (first == digitCount)
+        {
+            // Every digit was a zero, so the value is zero and the point position carries no information.
+            writer.Write("0.0");
             return;
         }
 
-        writer.Write(text);
-        if (marker < 0 && text.IndexOf('.') < 0) writer.Write(".0");
-    }
+        point -= first;
+        ReadOnlySpan<char> significant = digits[first..last];
+        int magnitude = point - 1; // the value is d.ddd x 10^magnitude
 
-    /// <summary>
-    /// Writes an <c>E</c>-notation literal as an equivalent plain decimal literal, for dialects that do not
-    /// accept an exponent. The digits are moved rather than the value re-formatted, so the round-trip fidelity
-    /// of the shortest round-trippable representation is preserved exactly.
-    /// </summary>
-    private static void AppendPlainDecimal(TextWriter writer, ReadOnlySpan<char> text, int marker)
-    {
-        int exponent = int.Parse(text[(marker + 1)..], NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture);
-
-        ReadOnlySpan<char> mantissa = text[..marker];
-        if (mantissa.StartsWith("-"))
+        if (options.AllowScientificNotation && (magnitude < -3 || magnitude > 6))
         {
-            writer.Write('-');
-            mantissa = mantissa[1..];
+            writer.Write(significant[0]);
+            writer.Write('.');
+            if (significant.Length > 1) writer.Write(significant[1..]);
+            else writer.Write('0');
+
+            writer.Write('E');
+            writer.Write(magnitude.ToString(CultureInfo.InvariantCulture));
+            return;
         }
 
-        // The "R" format yields at most 17 significant digits, so the buffer always covers the mantissa.
-        Span<char> digits = stackalloc char[32];
-        int digitCount = 0;
-        for (int index = 0; index < mantissa.Length; index++)
-        {
-            if (mantissa[index] != '.') digits[digitCount++] = mantissa[index];
-        }
-
-        int point = mantissa.IndexOf('.');
-        int integerLength = point < 0 ? mantissa.Length : point;
-        int pointPosition = integerLength + exponent;
-
-        if (pointPosition <= 0)
+        if (point <= 0)
         {
             writer.Write("0.");
-            WriteZeroes(writer, -pointPosition);
-            writer.Write(digits[..digitCount]);
+            WriteZeroes(writer, -point);
+            writer.Write(significant);
         }
-        else if (pointPosition >= digitCount)
+        else if (point >= significant.Length)
         {
-            writer.Write(digits[..digitCount]);
-            WriteZeroes(writer, pointPosition - digitCount);
+            writer.Write(significant);
+            WriteZeroes(writer, point - significant.Length);
             writer.Write(".0");
         }
         else
         {
-            writer.Write(digits[..pointPosition]);
+            writer.Write(significant[..point]);
             writer.Write('.');
-            writer.Write(digits[pointPosition..digitCount]);
+            writer.Write(significant[point..]);
         }
     }
 

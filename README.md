@@ -168,8 +168,9 @@ NbtDocument document = SnbtParser.ParseDocument(new StringReader(text));
 binds to them through the built-in implicit conversion and no intermediate copy is created; the
 `TextReader` overloads cover streams. SNBT has no root tag name, so `ParseDocument` returns a
 document whose `RootTagName` is `string.Empty`. `SnbtWriter` emits compact single-line output:
-byte/short/long literals carry their `b`/`s`/`L` suffixes, floating point uses `"R"` round-trip
-formatting followed by `f`/`d`, and strings stay bare unless quoting is required. `SnbtWriter.Write(TextWriter, ...)`
+byte/short/long literals carry their `b`/`s`/`L` suffixes, floating point follows Java's
+`Double.toString`/`Float.toString` shape followed by `f`/`d`, and strings stay bare unless quoting is
+required. `SnbtWriter.Write(TextWriter, ...)`
 streams the tree element by element and never materializes the whole document as a string; the `string`
 overloads collect the same writes in a `StringWriter`. Every overload has a counterpart that takes an
 `SnbtOptions` value; `SnbtWriter.Write(element, SnbtOptions.v1_13)` therefore produces text the classic
@@ -199,11 +200,26 @@ compound rules, and typed-array suffix handling are dialect-independent.
 #### Dialect effect on output
 
 Only one flag changes the written text. With `AllowScientificNotation` disabled, floating-point values
-are expanded into equivalent plain decimal literals — `1E+20d` is written as `100000000000000000000.0d` —
+are expanded into equivalent plain decimal literals — `1.0E20d` is written as `100000000000000000000.0d` —
 so the classic dialect can read them back. The expansion moves digits rather than re-formatting the
 value, so the shortest round-trippable representation is preserved exactly. The other eight flags
 describe input only: the writer never emits trailing commas, hexadecimal or binary literals,
 underscores, signedness suffixes, or `bool()`/`uuid()` operations.
+
+Floating-point literals follow the shape Java's `Double.toString`/`Float.toString` produce, because that
+is what Minecraft prints:
+
+| Rule | Example |
+|:---|:---|
+| The mantissa always keeps a decimal point and one digit after it. | `1.0E20d`, `100.0d`, `0.0d` |
+| The exponent carries no `+` and no leading zeros. | `1.2345678901234568E17d` |
+| `E`-notation is used outside `[10^-3, 10^7)`. | `1.0E7d` and `1.0E-4d`, but `9999999.0d` and `0.001d` |
+
+The digits themselves come from the runtime's shortest round-trippable form, which is not always the same
+digits Java picks: for the smallest subnormals Java prints `4.9E-324`, the runtime prints `5E-324`. Both
+parse back to the same value, so this is the one remaining textual difference. The point of the alignment is
+that a document written here and one printed by the game agree byte for byte in every ordinary case, which
+makes diffs, checksums, and cache keys over SNBT output meaningful.
 
 String quoting is dialect-independent on purpose. A bare string is only written when no dialect would
 read it as a number, because the classic dialect treats a number-like token such as `.5` as a malformed

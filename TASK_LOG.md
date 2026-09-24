@@ -1,5 +1,58 @@
 # Task Log
 
+## 2026-09-25 - Write floating-point literals in Java's shape
+
+### Scope
+
+Fix the audit's P1-5. The writer formatted floats with the runtime's `"R"` format, which differs from Java's
+`Double.toString`/`Float.toString` in three systematic ways. None of them is a parse error - Java reads both
+forms - but each one is a stable false positive in any diff, checksum, or cache key computed over SNBT
+output, which is the only reason to care about the text at all.
+
+| Value | Before | After | Java |
+|:---|:---|:---|:---|
+| `1e20` | `1E+20d` | `1.0E20d` | `1.0E20` |
+| `1e-20` | `1E-20d` | `1.0E-20d` | `1.0E-20` |
+| `1.2345678901234568e17` | `1.2345678901234568E+17d` | `1.2345678901234568E17d` | same |
+| `1e7` | `10000000.0d` | `1.0E7d` | `1.0E7` |
+| `1e-4` | `0.0001d` | `1.0E-4d` | `1.0E-4` |
+| `9999999.0` | `9999999.0d` | `9999999.0d` | same |
+
+### Actual Changes
+
+- Rewrote `AppendFloatLiteral` around a single normalization: any literal - `"R"` plain or `"R"` exponential -
+  is reduced to its significant digits plus the position of its decimal point, and the output form is chosen
+  from that value rather than from the shape the runtime happened to pick. `AppendPlainDecimal` is gone; the
+  plain and exponential branches now share the same digits.
+- Three rules changed to match Java: the mantissa always keeps a decimal point and at least one digit after
+  it (`1.0E20d`, `100.0d`, `0.0d`); the exponent carries no `+` and no leading zeros; and `E`-notation is
+  used outside `[10^-3, 10^7)` where `"R"` stays plain until `10^15`.
+- `AppendFloatLiteral` is now documented with those rules and with the one difference that remains.
+- `SnbtFloatFormatTests` adds three tables of Java-documented outputs for the same bit patterns (24 doubles,
+  13 floats, and the classic dialect's expansion of the same digits), a round-trip sweep over both dialects,
+  and one test that records the residual difference as an executable statement.
+- README's "Dialect effect on output" section gained the rule table and the same caveat.
+
+### Verification
+
+- `dotnet build Poly.NBT.slnx --no-restore`: 0 warnings, 0 errors.
+- `dotnet test Poly.NBT.slnx --no-restore`: 191/191 passed (previously 143).
+- `dotnet format Poly.NBT.slnx --no-restore --verify-no-changes --severity warn`: passed.
+- Swept the probe set through both dialects: every value round-trips exactly, including `double.MinValue`
+  whose classic-dialect expansion is 309 digits long and `double.Epsilon` whose expansion is 324.
+
+### Known Issues and Next
+
+- The digits still come from the runtime's shortest round-trippable form, which is provably not always the
+  digits Java picks. For the smallest subnormals Java prints `4.9E-324` for `Double.MIN_VALUE` and `1.4E-45`
+  for `Float.MIN_VALUE`, while the runtime's shortest forms are `5E-324` and `1E-45`. Reaching digit parity
+  would mean reimplementing Java's `FloatingDecimal`, and the two texts parse to the same value, so the
+  difference is recorded in a test and in both doc surfaces instead of being chased.
+- Consequently the guarantee is "the same shape in every ordinary case", not "byte-identical to the game in
+  every case". Anyone comparing SNBT text across implementations should compare parsed values.
+- This is a behavior change for `v1_21_5` output in `[1e7, 1e15)` and `[1e-4, 1e-3)`, which now use an
+  exponent. The classic dialect is unaffected: it expands the same digits into a plain decimal either way.
+
 ## 2026-09-25 - Quote SNBT strings that start with a sign or a point
 
 ### Scope
