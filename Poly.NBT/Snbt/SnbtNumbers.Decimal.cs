@@ -1,5 +1,5 @@
+using System.Buffers;
 using System.Globalization;
-using System.Text;
 using Poly.NBT.Dom;
 
 namespace Poly.NBT.Snbt;
@@ -93,38 +93,55 @@ internal static partial class SnbtNumbers
         value = null;
         error = null;
 
-        var builder = new StringBuilder(numberEnd);
-        for (int i = 0; i < numberEnd; i++)
-        {
-            if (token[i] != '_') builder.Append(token[i]);
-        }
+        // double.TryParse with NumberStyles.Float wants a plain literal: no digit separators, digits on both
+        // sides of the point, and no leading '+'. Build that form once - in a stack buffer for an ordinary
+        // literal, a pooled one for a pathologically long one - and parse the span directly. The previous form
+        // went StringBuilder, ToString, Insert, concatenate, slice, so one literal produced three or four
+        // temporary strings; this produces none.
+        char[]? rented = null;
+        Span<char> buffer = numberEnd + 2 <= StackBufferChars
+            ? stackalloc char[StackBufferChars]
+            : (rented = ArrayPool<char>.Shared.Rent(numberEnd + 2));
 
-        string text = builder.ToString();
-        int signLength = text.Length > 0 && text[0] is '+' or '-' ? 1 : 0;
-        if (text.Length > signLength && text[signLength] == '.') text = text.Insert(signLength, "0");
-        if (text.Length > 0 && text[^1] == '.') text += "0";
-        if (text.StartsWith('+')) text = text[1..];
-
-        if (singlePrecision)
+        try
         {
-            if (!float.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out float single) || float.IsInfinity(single))
+            int sign = token[0] is '+' or '-' ? 1 : 0;
+            int length = 0;
+            if (token[0] == '-') buffer[length++] = '-';
+            if (token[sign] == '.') buffer[length++] = '0';
+            for (int i = sign; i < numberEnd; i++)
+            {
+                if (token[i] != '_') buffer[length++] = token[i];
+            }
+
+            if (buffer[length - 1] == '.') buffer[length++] = '0';
+            ReadOnlySpan<char> normalized = buffer[..length];
+
+            if (singlePrecision)
+            {
+                if (!float.TryParse(normalized, NumberStyles.Float, CultureInfo.InvariantCulture, out float single) || float.IsInfinity(single))
+                {
+                    error = $"The value in '{token}' is out of range.";
+                    return SnbtNumberStatus.Invalid;
+                }
+
+                value = new NbtFloat(single);
+                return SnbtNumberStatus.Success;
+            }
+
+            if (!double.TryParse(normalized, NumberStyles.Float, CultureInfo.InvariantCulture, out double number) || double.IsInfinity(number))
             {
                 error = $"The value in '{token}' is out of range.";
                 return SnbtNumberStatus.Invalid;
             }
 
-            value = new NbtFloat(single);
+            value = new NbtDouble(number);
             return SnbtNumberStatus.Success;
         }
-
-        if (!double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out double number) || double.IsInfinity(number))
+        finally
         {
-            error = $"The value in '{token}' is out of range.";
-            return SnbtNumberStatus.Invalid;
+            if (rented is not null) ArrayPool<char>.Shared.Return(rented);
         }
-
-        value = new NbtDouble(number);
-        return SnbtNumberStatus.Success;
     }
 
     private static SnbtNumberStatus? SplitSuffix(ReadOnlySpan<char> token, ref int index, SnbtOptions options, out char? typeLetter, out bool? unsignedSuffix, out string? error)
@@ -135,7 +152,7 @@ internal static partial class SnbtNumbers
 
         int start = index;
         int count = 0;
-        while (index < token.Length && count < 2 && SuffixLetters.Contains(token[index]))
+        while (index < token.Length && count < 2 && IsSuffixLetter(token[index]))
         {
             index++;
             count++;
@@ -255,6 +272,11 @@ internal static partial class SnbtNumbers
     }
 
     private static bool IsAsciiDigit(char value) => value is >= '0' and <= '9';
+
+    // The suffix alphabet is fixed and short, so a direct comparison says what it means and runs once per
+    // character without the linear scan and the extension-method call that string.Contains cost.
+    private static bool IsSuffixLetter(char value)
+        => value is 'b' or 'B' or 's' or 'S' or 'l' or 'L' or 'f' or 'F' or 'd' or 'D' or 'u' or 'U' or 'i' or 'I';
 
     private static bool IsHexDigit(ReadOnlySpan<char> token, int index) => index < token.Length && SnbtLexer.HexValue(token[index]) >= 0;
 

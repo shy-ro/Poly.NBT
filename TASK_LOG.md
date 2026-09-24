@@ -1,5 +1,54 @@
 # Task Log
 
+## 2026-09-25 - Drop the temporaries and the linear scan from number parsing
+
+### Scope
+
+Fix the audit's P3-1 and P3-2. Both are on the SNBT number-parse path, so they are one change to one file.
+Neither alters behavior; both remove work.
+
+`ParseFloatValue` built its normalized literal through a four-step string pipeline: a `StringBuilder` to strip
+digit separators, `ToString`, an `Insert` to add a missing integer part, `+=` to add a missing fractional part,
+and a slice to drop a leading `+`. One float literal therefore produced three or four temporary strings before
+the runtime parser saw it.
+
+`SplitSuffix` tested the suffix letters with `SuffixLetters.Contains`, a linear scan of a fourteen-character
+constant string, once per character of every numeric token.
+
+### Actual Changes
+
+- `ParseFloatValue` now normalizes in a single pass into a `Span<char>`: a stack buffer for an ordinary literal
+  and an `ArrayPool<char>` buffer once the literal exceeds 256 characters, returned in a `finally`. The
+  rewrite is structural rather than a set of patches - the sign is copied once, a `0` is inserted before a
+  leading point as it goes, a trailing point gets its `0` appended, and separators are skipped in the copy loop.
+  `double.TryParse` and `float.TryParse` take the span directly, so the normalized form is never a `string`.
+  `using System.Text` is gone with the `StringBuilder`.
+- `SuffixLetters` and its `string.Contains` are replaced by an `IsSuffixLetter` char pattern, and the constant
+  is removed rather than left unused.
+- `FloatNormalizationCoversSignsSeparatorsAndLongLiterals` pins the branches the rewrite touches: a leading `+`
+  dropped, a trailing point completed, a separator removed, and a literal past the stack-buffer threshold,
+  which exercises the rental path and still reports out of range instead of crashing.
+- README's `Performance` section gains a bullet recording that a numeric literal now allocates nothing.
+
+### Verification
+
+- `dotnet build Poly.NBT.slnx --no-restore`: 0 warnings, 0 errors.
+- `dotnet test Poly.NBT.slnx --no-restore`: 206/206 passed (previously 205).
+- `dotnet format Poly.NBT.slnx --no-restore --verify-no-changes --severity warn`: passed.
+- Behavior-preserving: the pre-existing `.5`, `5.`, `1_000.5f`, and exponent tests pass unchanged. The
+  existing `AllowOmittedFloatParts` dialect gate still rejects `.5` and `5.` under `v1_13`, because the
+  normalization runs only after that check.
+
+### Known Issues and Next
+
+- Found while writing this change, and out of the audit's scope: `+.5` and `-.5` are legal float literals but
+  `IsNumberCandidate` requires a digit immediately after the sign, so both fall through to `NbtString`. That
+  silently reads a float as a string. The writer is unaffected, because it already quotes any string starting
+  with a sign, so the fix is reader-only. Handled as the next commit.
+- The remaining P3 items are untouched: the unconditional `StringBuilder` in `ReadQuotedString`, the
+  null-constructible DOM payloads, a missing `.editorconfig`, package metadata and the `Implemented/Planned`
+  table, an AOT smoke project, and the tracked `TASK_LOG.md` decision.
+
 ## 2026-09-25 - Tolerate any element type on an empty list
 
 ### Scope

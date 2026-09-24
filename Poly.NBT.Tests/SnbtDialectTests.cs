@@ -49,6 +49,23 @@ public sealed class SnbtDialectTests
     }
 
     [Fact]
+    public void FloatNormalizationCoversSignsSeparatorsAndLongLiterals()
+    {
+        // The parser rewrites every literal into the shape double.TryParse accepts: it drops a leading '+',
+        // fills in a missing integer or fractional part, and removes digit separators. These are the shapes
+        // that exercise each branch.
+        Assert.Equal(new NbtDouble(5d), SnbtParser.Parse("+5.", SnbtOptions.v1_21_5));
+        Assert.Equal(new NbtDouble(-5d), SnbtParser.Parse("-5.", SnbtOptions.v1_21_5));
+        Assert.Equal(new NbtDouble(-0.5), SnbtParser.Parse("-0.5", SnbtOptions.v1_21_5));
+        Assert.Equal(new NbtDouble(1000.5), SnbtParser.Parse("1_000.5", SnbtOptions.v1_21_5));
+
+        // Past the stack buffer the parser rents from the pool, so a literal longer than the buffer has to
+        // round-trip through the same normalization and still be reported as out of range rather than crash.
+        string longLiteral = "1" + new string('0', 400) + ".0";
+        Assert.Throws<SnbtParseException>(() => SnbtParser.Parse(longLiteral, SnbtOptions.v1_21_5));
+    }
+
+    [Fact]
     public void TrailingCommasAreDialectSpecific()
     {
         Assert.Equal("{a:1}", SnbtWriter.Write(SnbtParser.Parse("{a:1,}", SnbtOptions.v1_21_5)));

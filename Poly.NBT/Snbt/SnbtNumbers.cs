@@ -18,7 +18,8 @@ internal enum SnbtNumberStatus
 /// <summary>Interprets SNBT numeric literals, including the 1.21.5 extended forms.</summary>
 internal static partial class SnbtNumbers
 {
-    private const string SuffixLetters = "bBsSlLfFdDuUiI";
+    /// <summary>Size of the stack buffer a floating-point literal is normalized into before it is parsed.</summary>
+    private const int StackBufferChars = 256;
 
     public static SnbtNumberStatus TryParse(ReadOnlySpan<char> token, SnbtOptions options, out NbtElement? value, out string? error)
     {
