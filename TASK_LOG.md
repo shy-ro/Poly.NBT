@@ -1,5 +1,56 @@
 # Task Log
 
+## 2026-09-25 - Bound NBT and SNBT nesting depth
+
+### Scope
+
+Close the crash class the audit found: the readers and writers recurse once per nesting level, and the level
+count comes straight from the input, so a few kilobytes of crafted bytes killed the process with an
+uncatchable `StackOverflowException`.
+
+| Path | Trigger | Before | After |
+|:---|:---|:---|:---|
+| Binary read | `09 09 00000001` x 3000 | Stack overflow at 3,000 levels (15 KB) | `InvalidDataException` |
+| SNBT parse | `[[[[...1...]]]]` at 3,000 levels | Stack overflow (6 KB) | `SnbtParseException` with an offset |
+| Serialize | user-built 5,000-deep `NbtList` | Stack overflow | `InvalidDataException` |
+
+### Actual Changes
+
+- Added `NbtOptions.MaxDepth` and `SnbtOptions.MaxDepth`, both defaulting to 512 through a documented zero
+  sentinel, and set them explicitly on every preset. `NbtSerializer` rejects a negative value at construction.
+- Threaded a `depth` parameter through the whole converter surface: `NbtConverter<T>`, every converter in
+  `PrimitiveConverters`/`CollectionConverters`/`ObjectConverters`/`OptionalConverter`/`EnumConverter`/
+  `RuntimeObjectConverter`/`NbtElementConverter`, `NbtPropertyConverter`, and `NbtSerializer.SkipPayload`.
+  `NbtSerializer.Descend(depth)` increments the level and enforces the limit in one place.
+- Argument carrying is deliberate. Converters are cached in a `MultiProviderTypeCache` and shared across
+  threads, so a depth counter stored as a field would be visible to concurrent serializations - fixing one bug
+  by introducing a race. As a parameter it is per-call by construction.
+- `SkipPayload` is bounded too: it recurses over tag types read from the stream, so it was reachable by the same
+  input as the main reader.
+- The SNBT parser reports the offending bracket's `Offset`; the writers and the binary reader report
+  `InvalidDataException`. Every message names the option to raise.
+- `EveryPresetCarriesTheDefaultLimit`, `ReadingDeeplyNestedListsFailsInsteadOfOverflowingTheStack` (20,000
+  levels), `ReadingDeclarativelyDeepTypesIsAlsoBounded` (`Dictionary<string, object>`), `WritingDeeplyNested
+  ListsFailsInsteadOfOverflowingTheStack`, `ParsingDeeplyNestedSnbtFailsWithAnOffset`, a configurable-limit
+  test, and a negative-limit test.
+
+### Verification
+
+- `dotnet build Poly.NBT.slnx --no-restore`: 0 warnings, 0 errors.
+- `dotnet test Poly.NBT.slnx --no-restore`: 130/130 passed (previously 123).
+- Re-ran the audit probes that used to kill the process; all now report the bounded exception and exit
+  normally instead of dying:
+  `deep-read 20000`, `deep 20000` -> `InvalidDataException`; `deep-snbt 20000` -> `SnbtParseException`.
+- Cost when the limit is not reached: none. The depth is an `int` argument and no converter stores it.
+
+### Known Issues and Next
+
+- Every value counts towards the level, the innermost scalar included, so `[[[1]]]` is four levels. That is
+  documented in both property remarks and the README; it keeps one uniform rule instead of a second rule for
+  container-only counting.
+- 512 is a judgement call, not a Minecraft-derived number: Minecraft bounds allocation through `NbtAccounter`
+  rather than nesting. The value is configurable for callers that legitimately nest deeper.
+
 ## 2026-09-25 - Make NbtOptions value semantics honest
 
 ### Scope

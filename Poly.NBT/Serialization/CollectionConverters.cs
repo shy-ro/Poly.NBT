@@ -4,7 +4,7 @@ namespace Poly.NBT.Serialization;
 
 internal class NbtEnumerableConverter<TEnumerable, TElement> : NbtConverter<TEnumerable>
 {
-    private readonly NbtSerializer _serializer;
+    protected readonly NbtSerializer _serializer;
     private readonly Func<TEnumerable, IEnumerable<TElement>> _getEnumerable;
     private readonly bool _optimize;
     protected readonly NbtConverter<TElement> ElementConverter;
@@ -20,7 +20,7 @@ internal class NbtEnumerableConverter<TEnumerable, TElement> : NbtConverter<TEnu
     public override NbtTagType TagType => NbtTagType.List;
     public override NbtTagType GetTagType(TEnumerable? value) => _optimize ? OptimizedTag : NbtTagType.List;
 
-    public override TEnumerable? ReadPayload(Stream stream) => throw new NotSupportedException($"Collection {typeof(TEnumerable)} cannot be constructed.");
+    public override TEnumerable? ReadPayload(Stream stream, int depth) => throw new NotSupportedException($"Collection {typeof(TEnumerable)} cannot be constructed.");
 
     private static bool CanOptimizePrimitive(Type elementType, NbtOptions options)
     {
@@ -47,7 +47,7 @@ internal class NbtEnumerableConverter<TEnumerable, TElement> : NbtConverter<TEnu
         return result;
     }
 
-    public sealed override void WritePayload(Stream stream, TEnumerable? value)
+    public sealed override void WritePayload(Stream stream, TEnumerable? value, int depth)
     {
         if (value is null) throw new InvalidDataException("NBT has no null list value.");
         IEnumerable<TElement> enumerable = _getEnumerable(value);
@@ -93,7 +93,7 @@ internal class NbtEnumerableConverter<TEnumerable, TElement> : NbtConverter<TEnu
             TElement item = enumerator.Current;
             if (!ElementConverter.ShouldWrite(item)) throw new InvalidDataException("NBT lists cannot contain absent or null elements.");
             NbtSerializer.EnsureTagType(elementType, ElementConverter.GetTagType(item));
-            ElementConverter.WritePayload(stream, item);
+            ElementConverter.WritePayload(stream, item, _serializer.Descend(depth));
             hasValue = enumerator.MoveNext();
         }
     }
@@ -148,7 +148,7 @@ internal sealed class NbtMutableEnumerableConverter<TEnumerable, TElement>(
     MutableCollectionConstructor<TElement, TEnumerable> constructor,
     EnumerableAppender<TEnumerable, TElement> appender, bool optimize = false) : NbtEnumerableConverter<TEnumerable, TElement>(serializer, elementConverter, getEnumerable, optimize)
 {
-    public override TEnumerable ReadPayload(Stream stream, NbtTagType actualType)
+    public override TEnumerable ReadPayload(Stream stream, NbtTagType actualType, int depth)
     {
         if (actualType is NbtTagType.ByteArray or NbtTagType.IntArray or NbtTagType.LongArray)
         {
@@ -156,16 +156,16 @@ internal sealed class NbtMutableEnumerableConverter<TEnumerable, TElement>(
             foreach (TElement value in ReadOptimizedElements(stream, actualType)) appender(ref result, value);
             return result;
         }
-        return base.ReadPayload(stream, actualType)!;
+        return base.ReadPayload(stream, actualType, depth)!;
     }
 
-    public override TEnumerable ReadPayload(Stream stream)
+    public override TEnumerable ReadPayload(Stream stream, int depth)
     {
         (int count, NbtTagType elementType) = ReadHeader(stream);
         TEnumerable result = constructor(new() { Capacity = count });
         for (int index = 0; index < count; index++)
         {
-            if (!appender(ref result, ElementConverter.ReadPayload(stream, elementType)!)) throw new InvalidDataException("Could not append an NBT list element.");
+            if (!appender(ref result, ElementConverter.ReadPayload(stream, elementType, _serializer.Descend(depth))!)) throw new InvalidDataException("Could not append an NBT list element.");
         }
         return result;
     }
@@ -177,23 +177,23 @@ internal sealed class NbtParameterizedEnumerableConverter<TEnumerable, TElement>
     Func<TEnumerable, IEnumerable<TElement>> getEnumerable,
     ParameterizedCollectionConstructor<TElement, TElement, TEnumerable> constructor, bool optimize = false) : NbtEnumerableConverter<TEnumerable, TElement>(serializer, elementConverter, getEnumerable, optimize)
 {
-    public override TEnumerable ReadPayload(Stream stream, NbtTagType actualType)
+    public override TEnumerable ReadPayload(Stream stream, NbtTagType actualType, int depth)
         => actualType is NbtTagType.ByteArray or NbtTagType.IntArray or NbtTagType.LongArray
             ? constructor(ReadOptimizedElements(stream, actualType))
-            : base.ReadPayload(stream, actualType)!;
+            : base.ReadPayload(stream, actualType, depth)!;
 
-    public override TEnumerable ReadPayload(Stream stream)
+    public override TEnumerable ReadPayload(Stream stream, int depth)
     {
         (int count, NbtTagType elementType) = ReadHeader(stream);
         TElement[] values = new TElement[count];
-        for (int index = 0; index < values.Length; index++) values[index] = ElementConverter.ReadPayload(stream, elementType)!;
+        for (int index = 0; index < values.Length; index++) values[index] = ElementConverter.ReadPayload(stream, elementType, _serializer.Descend(depth))!;
         return constructor(values);
     }
 }
 
 internal class NbtDictionaryConverter<TDictionary, TValue> : NbtConverter<TDictionary>
 {
-    private readonly NbtSerializer _serializer;
+    protected readonly NbtSerializer _serializer;
     private readonly Func<TDictionary, IEnumerable<KeyValuePair<string, TValue>>> _getDictionary;
     protected readonly NbtConverter<TValue> ValueConverter;
 
@@ -205,9 +205,9 @@ internal class NbtDictionaryConverter<TDictionary, TValue> : NbtConverter<TDicti
     }
 
     public override NbtTagType TagType => NbtTagType.Compound;
-    public override TDictionary? ReadPayload(Stream stream) => throw new NotSupportedException($"Dictionary {typeof(TDictionary)} cannot be constructed.");
+    public override TDictionary? ReadPayload(Stream stream, int depth) => throw new NotSupportedException($"Dictionary {typeof(TDictionary)} cannot be constructed.");
 
-    public sealed override void WritePayload(Stream stream, TDictionary? value)
+    public sealed override void WritePayload(Stream stream, TDictionary? value, int depth)
     {
         if (value is null) throw new InvalidDataException("NBT has no null compound value.");
         foreach ((string name, TValue item) in _getDictionary(value))
@@ -215,19 +215,19 @@ internal class NbtDictionaryConverter<TDictionary, TValue> : NbtConverter<TDicti
             if (!ValueConverter.ShouldWrite(item)) continue;
             stream.WriteByte((byte)ValueConverter.GetTagType(item));
             _serializer.Strings.Write(stream, name);
-            ValueConverter.WritePayload(stream, item);
+            ValueConverter.WritePayload(stream, item, _serializer.Descend(depth));
         }
         stream.WriteByte((byte)NbtTagType.End);
     }
 
-    protected IEnumerable<KeyValuePair<string, TValue>> ReadEntries(Stream stream)
+    protected IEnumerable<KeyValuePair<string, TValue>> ReadEntries(Stream stream, int depth)
     {
         HashSet<string> seen = new(StringComparer.Ordinal);
         while (_serializer.ReadTagType(stream) is { } type && type != NbtTagType.End)
         {
             string key = _serializer.Strings.Read(stream);
             if (!seen.Add(key)) throw new InvalidDataException($"Duplicate NBT key '{key}'.");
-            yield return new(key, ValueConverter.ReadPayload(stream, type)!);
+            yield return new(key, ValueConverter.ReadPayload(stream, type, _serializer.Descend(depth))!);
         }
     }
 }
@@ -239,10 +239,10 @@ internal sealed class NbtMutableDictionaryConverter<TDictionary, TValue>(
     MutableCollectionConstructor<string, TDictionary> constructor,
     DictionaryInserter<TDictionary, string, TValue> inserter) : NbtDictionaryConverter<TDictionary, TValue>(serializer, valueConverter, getDictionary)
 {
-    public override TDictionary ReadPayload(Stream stream)
+    public override TDictionary ReadPayload(Stream stream, int depth)
     {
         TDictionary result = constructor();
-        foreach ((string key, TValue value) in ReadEntries(stream)) inserter(ref result, key, value);
+        foreach ((string key, TValue value) in ReadEntries(stream, depth)) inserter(ref result, key, value);
         return result;
     }
 }
@@ -253,5 +253,5 @@ internal sealed class NbtParameterizedDictionaryConverter<TDictionary, TValue>(
     Func<TDictionary, IEnumerable<KeyValuePair<string, TValue>>> getDictionary,
     ParameterizedCollectionConstructor<string, KeyValuePair<string, TValue>, TDictionary> constructor) : NbtDictionaryConverter<TDictionary, TValue>(serializer, valueConverter, getDictionary)
 {
-    public override TDictionary ReadPayload(Stream stream) => constructor(ReadEntries(stream).ToArray());
+    public override TDictionary ReadPayload(Stream stream, int depth) => constructor(ReadEntries(stream, depth).ToArray());
 }

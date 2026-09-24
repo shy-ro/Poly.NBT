@@ -14,11 +14,13 @@ public sealed partial class NbtSerializer
 {
     private readonly MultiProviderTypeCache _converterCache;
     private readonly IReadOnlyDictionary<Type, NbtConverter> _builtIns;
+    private readonly int _maxDepth;
 
     private NbtSerializer(NbtOptions options)
     {
         Validate(options);
         Options = options;
+        _maxDepth = options.EffectiveMaxDepth;
         Numeric = options.NumericEncoding switch
         {
             NbtNumericEncoding.VarIntZigZag => new VarIntNumericCodec(),
@@ -72,7 +74,7 @@ public sealed partial class NbtSerializer
             Strings.Write(destination, rootTagName);
         }
 
-        converter.WritePayload(destination, value);
+        converter.WritePayload(destination, value, RootDepth);
     }
 
     /// <summary>Deserializes one root tag. Object-typed scalars become CLR primitives; object-typed lists and compounds remain DOM values.</summary>
@@ -82,14 +84,14 @@ public sealed partial class NbtSerializer
         ArgumentNullException.ThrowIfNull(shape);
         NbtConverter<T> converter = GetConverter(shape);
         (NbtTagType actual, _) = ReadRootHeader(source, rootNameOmitted);
-        return converter.ReadPayload(source, actual);
+        return converter.ReadPayload(source, actual, RootDepth);
     }
 
     public NbtDocument DeserializeDocument(Stream source, bool rootNameOmitted = false)
     {
         ArgumentNullException.ThrowIfNull(source);
         (NbtTagType actual, string rootTagName) = ReadRootHeader(source, rootNameOmitted);
-        NbtElement rootElement = GetElementConverter().ReadPayload(source, actual)
+        NbtElement rootElement = GetElementConverter().ReadPayload(source, actual, RootDepth)
             ?? throw new InvalidDataException("The root NBT element cannot be null.");
         return new(rootTagName, rootElement);
     }
@@ -158,13 +160,34 @@ public sealed partial class NbtSerializer
 
     private NbtConverter<NbtElement> GetElementConverter() => (NbtConverter<NbtElement>)_builtIns[typeof(NbtElement)];
 
+    /// <summary>The nesting level of the root tag. Every child level is derived from it by <see cref="Descend"/>.</summary>
+    private const int RootDepth = 1;
+
+    /// <summary>
+    /// Returns the nesting level of a child of the value at <paramref name="depth"/>, or throws when that would
+    /// exceed <see cref="NbtOptions.MaxDepth"/>.
+    /// </summary>
+    /// <remarks>
+    /// The readers and writers are recursive, and their recursion is driven by the input: a few kilobytes of
+    /// nested <c>TAG_List</c> headers, or a user-built tree of nested lists, is enough to exhaust the stack.
+    /// <see cref="StackOverflowException"/> cannot be caught in .NET, so bounding the recursion here is the only
+    /// way to fail recoverably.
+    /// </remarks>
+    internal int Descend(int depth)
+    {
+        int next = depth + 1;
+        return next > _maxDepth
+            ? throw new InvalidDataException($"The NBT document nests more than {_maxDepth} levels deep; raise NbtOptions.MaxDepth to accept it.")
+            : next;
+    }
+
     internal NbtElement ToElementInternal<T>(T? value, ITypeShape<T> shape)
     {
         using var stream = new MemoryStream();
         Serialize(stream, value, "", shape);
         stream.Position = 0;
         NbtTagType rootType = ReadTagType(stream);
-        return GetElementConverter().ReadPayload(stream, rootType)
+        return GetElementConverter().ReadPayload(stream, rootType, RootDepth)
             ?? throw new InvalidDataException("The root NBT value cannot be absent.");
     }
 
@@ -174,7 +197,7 @@ public sealed partial class NbtSerializer
         using var stream = new MemoryStream();
         NbtConverter<NbtElement> elementConverter = GetElementConverter();
         stream.WriteByte((byte)elementConverter.GetTagType(element));
-        elementConverter.WritePayload(stream, element);
+        elementConverter.WritePayload(stream, element, RootDepth);
         stream.Position = 0;
         return Deserialize(stream, shape, rootNameOmitted: true);
     }
@@ -188,7 +211,7 @@ public sealed partial class NbtSerializer
         return (type, rootTagName);
     }
 
-    internal void SkipPayload(Stream stream, NbtTagType type)
+    internal void SkipPayload(Stream stream, NbtTagType type, int depth)
     {
         switch (type)
         {
@@ -212,13 +235,13 @@ public sealed partial class NbtSerializer
                 break;
             case NbtTagType.List:
                 NbtTagType elementType = ReadTagType(stream);
-                for (int count = Lengths.ReadCollectionLength(stream); count > 0; count--) SkipPayload(stream, elementType);
+                for (int count = Lengths.ReadCollectionLength(stream); count > 0; count--) SkipPayload(stream, elementType, Descend(depth));
                 break;
             case NbtTagType.Compound:
                 while ((type = ReadTagType(stream)) != NbtTagType.End)
                 {
                     _ = Strings.Read(stream);
-                    SkipPayload(stream, type);
+                    SkipPayload(stream, type, Descend(depth));
                 }
                 break;
             case NbtTagType.End:
@@ -283,6 +306,7 @@ public sealed partial class NbtSerializer
         if (!Enum.IsDefined(options.StringEncoding)) throw new ArgumentOutOfRangeException(nameof(options.StringEncoding));
         if (!Enum.IsDefined(options.NumericEncoding)) throw new ArgumentOutOfRangeException(nameof(options.NumericEncoding));
         if (!Enum.IsDefined(options.RootTagNaming)) throw new ArgumentOutOfRangeException(nameof(options.RootTagNaming));
+        if (options.MaxDepth < 0) throw new ArgumentOutOfRangeException(nameof(options.MaxDepth));
     }
 
     private sealed class DelayedConverterFactory : IDelayedValueFactory

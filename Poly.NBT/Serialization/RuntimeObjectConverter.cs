@@ -19,11 +19,11 @@ internal sealed class RuntimeObjectConverter(NbtSerializer serializer, ITypeShap
             : Resolve(value).GetTagTypeObject(value);
     }
 
-    public override object? ReadPayload(Stream stream) => throw new InvalidOperationException("A dynamic NBT tag type is required.");
+    public override object? ReadPayload(Stream stream, int depth) => throw new InvalidOperationException("A dynamic NBT tag type is required.");
 
-    public override object? ReadPayload(Stream stream, NbtTagType actualType)
+    public override object? ReadPayload(Stream stream, NbtTagType actualType, int depth)
     {
-        Dom.NbtElement element = _domConverter.ReadPayload(stream, actualType);
+        Dom.NbtElement element = _domConverter.ReadPayload(stream, actualType, depth);
         return element switch
         {
             NbtByte item => item.Value,
@@ -40,16 +40,16 @@ internal sealed class RuntimeObjectConverter(NbtSerializer serializer, ITypeShap
         };
     }
 
-    public override void WritePayload(Stream stream, object? value)
+    public override void WritePayload(Stream stream, object? value, int depth)
     {
         if (value is null) throw new InvalidDataException("NBT has no null value.");
         if (value is Dom.NbtElement element)
         {
-            _domConverter.WritePayload(stream, element);
+            _domConverter.WritePayload(stream, element, depth);
             return;
         }
 
-        Resolve(value).WritePayloadObject(stream, value);
+        Resolve(value).WritePayloadObject(stream, value, depth);
     }
 
     private NbtConverter Resolve(object value)

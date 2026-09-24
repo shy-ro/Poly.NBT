@@ -15,7 +15,7 @@ internal sealed class NbtEnumConverter<TEnum, TUnderlying>(NbtSerializer seriali
         _ => throw new NotSupportedException($"Unsupported enum underlying type {typeof(TUnderlying)}."),
     };
 
-    public override TEnum ReadPayload(Stream stream)
+    public override TEnum ReadPayload(Stream stream, int depth)
     {
         TUnderlying underlying;
         if (typeof(TUnderlying) == typeof(byte))
@@ -66,7 +66,7 @@ internal sealed class NbtEnumConverter<TEnum, TUnderlying>(NbtSerializer seriali
         return Unsafe.As<TUnderlying, TEnum>(ref underlying);
     }
 
-    public override void WritePayload(Stream stream, TEnum value)
+    public override void WritePayload(Stream stream, TEnum value, int depth)
     {
         TUnderlying underlying = Unsafe.As<TEnum, TUnderlying>(ref value);
         if (typeof(TUnderlying) == typeof(byte)) stream.WriteByte(Unsafe.As<TUnderlying, byte>(ref underlying));

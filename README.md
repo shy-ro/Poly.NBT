@@ -77,8 +77,18 @@ if (list.TryToArray(out int[]? values))
 
 Overloads: `byte[]`, `sbyte[]`, `short[]`, `int[]`, `long[]`, `float[]`, `double[]`, `string[]`.
 
-### PolyType attributes
+### Nesting depth
 
+Both readers and writers recurse once per nesting level, and the level count comes from the input, so
+the depth is bounded: `NbtOptions.MaxDepth` and `SnbtOptions.MaxDepth` default to 512, counting the
+outermost value as level one. Past the limit the binary reader and both writers throw
+`InvalidDataException`, and the SNBT parser throws `SnbtParseException` with the `Offset` of the
+offending bracket — the message names the option to raise. Zero selects the library default.
+
+The bound exists because `StackOverflowException` cannot be caught in .NET: without it, 15 KB of nested
+`TAG_List` headers or 6 KB of nested brackets terminate the process, which no host can defend against.
+
+### PolyType attributes
 ```csharp
 [GenerateShape]
 public partial record Player(int Health, string Name);

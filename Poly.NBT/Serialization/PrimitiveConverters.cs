@@ -11,21 +11,21 @@ internal sealed class PrimitiveConverter<T>(
     Action<Stream, T> writer) : NbtConverter<T>
 {
     public override NbtTagType TagType => tagType;
-    public override T ReadPayload(Stream stream) => reader(stream);
-    public override void WritePayload(Stream stream, T? value) => writer(stream, value!);
+    public override T ReadPayload(Stream stream, int depth) => reader(stream);
+    public override void WritePayload(Stream stream, T? value, int depth) => writer(stream, value!);
 }
 
 internal sealed class StringConverter(NbtStringCodec codec) : NbtConverter<string>
 {
     public override NbtTagType TagType => NbtTagType.String;
-    public override string ReadPayload(Stream stream) => codec.Read(stream);
-    public override void WritePayload(Stream stream, string? value) => codec.Write(stream, value ?? throw new InvalidDataException("NBT has no null string value."));
+    public override string ReadPayload(Stream stream, int depth) => codec.Read(stream);
+    public override void WritePayload(Stream stream, string? value, int depth) => codec.Write(stream, value ?? throw new InvalidDataException("NBT has no null string value."));
 }
 
 internal sealed class ByteArrayConverter(NbtLengthCodec lengths, bool optimize) : NbtConverter<byte[]>
 {
     public override NbtTagType TagType => optimize ? NbtTagType.ByteArray : NbtTagType.List;
-    public override byte[] ReadPayload(Stream stream, NbtTagType actualType)
+    public override byte[] ReadPayload(Stream stream, NbtTagType actualType, int depth)
     {
         if (actualType == NbtTagType.List)
         {
@@ -36,10 +36,10 @@ internal sealed class ByteArrayConverter(NbtLengthCodec lengths, bool optimize) 
             return result;
         }
         NbtSerializer.EnsureTagType(NbtTagType.ByteArray, actualType);
-        return ReadPayload(stream);
+        return ReadPayload(stream, depth);
     }
-    public override byte[] ReadPayload(Stream stream) => StreamIO.ReadExactly(stream, lengths.ReadCollectionLength(stream));
-    public override void WritePayload(Stream stream, byte[]? value)
+    public override byte[] ReadPayload(Stream stream, int depth) => StreamIO.ReadExactly(stream, lengths.ReadCollectionLength(stream));
+    public override void WritePayload(Stream stream, byte[]? value, int depth)
     {
         if (value is null) throw new InvalidDataException("NBT has no null array value.");
         if (!optimize) stream.WriteByte((byte)NbtTagType.Byte);
@@ -51,7 +51,7 @@ internal sealed class ByteArrayConverter(NbtLengthCodec lengths, bool optimize) 
 internal sealed class SByteArrayConverter(NbtLengthCodec lengths, bool optimize) : NbtConverter<sbyte[]>
 {
     public override NbtTagType TagType => optimize ? NbtTagType.ByteArray : NbtTagType.List;
-    public override sbyte[] ReadPayload(Stream stream, NbtTagType actualType)
+    public override sbyte[] ReadPayload(Stream stream, NbtTagType actualType, int depth)
     {
         if (actualType == NbtTagType.List)
         {
@@ -62,16 +62,16 @@ internal sealed class SByteArrayConverter(NbtLengthCodec lengths, bool optimize)
             return result;
         }
         NbtSerializer.EnsureTagType(NbtTagType.ByteArray, actualType);
-        return ReadPayload(stream);
+        return ReadPayload(stream, depth);
     }
-    public override sbyte[] ReadPayload(Stream stream)
+    public override sbyte[] ReadPayload(Stream stream, int depth)
     {
         sbyte[] result = GC.AllocateUninitializedArray<sbyte>(lengths.ReadCollectionLength(stream));
         stream.ReadExactly(MemoryMarshal.AsBytes(result.AsSpan()));
         return result;
     }
 
-    public override void WritePayload(Stream stream, sbyte[]? value)
+    public override void WritePayload(Stream stream, sbyte[]? value, int depth)
     {
         if (value is null) throw new InvalidDataException("NBT has no null array value.");
         if (!optimize) stream.WriteByte((byte)NbtTagType.Byte);
@@ -83,7 +83,7 @@ internal sealed class SByteArrayConverter(NbtLengthCodec lengths, bool optimize)
 internal sealed class IntArrayConverter(NbtLengthCodec lengths, NbtNumericCodec numeric, bool optimize) : NbtConverter<int[]>
 {
     public override NbtTagType TagType => optimize ? NbtTagType.IntArray : NbtTagType.List;
-    public override int[] ReadPayload(Stream stream, NbtTagType actualType)
+    public override int[] ReadPayload(Stream stream, NbtTagType actualType, int depth)
     {
         if (actualType == NbtTagType.List)
         {
@@ -92,14 +92,14 @@ internal sealed class IntArrayConverter(NbtLengthCodec lengths, NbtNumericCodec 
             return FixedArrayIO.ReadInt32(stream, count, numeric);
         }
         NbtSerializer.EnsureTagType(NbtTagType.IntArray, actualType);
-        return ReadPayload(stream);
+        return ReadPayload(stream, depth);
     }
-    public override int[] ReadPayload(Stream stream)
+    public override int[] ReadPayload(Stream stream, int depth)
     {
         return FixedArrayIO.ReadInt32(stream, lengths.ReadCollectionLength(stream), numeric);
     }
 
-    public override void WritePayload(Stream stream, int[]? value)
+    public override void WritePayload(Stream stream, int[]? value, int depth)
     {
         if (value is null) throw new InvalidDataException("NBT has no null array value.");
         if (!optimize) stream.WriteByte((byte)NbtTagType.Int);
@@ -113,7 +113,7 @@ internal sealed class LongArrayConverter(NbtLengthCodec lengths, NbtNumericCodec
     private readonly bool useArray = supported && optimize;
     public override NbtTagType TagType => useArray ? NbtTagType.LongArray : NbtTagType.List;
 
-    public override long[] ReadPayload(Stream stream, NbtTagType actualType)
+    public override long[] ReadPayload(Stream stream, NbtTagType actualType, int depth)
     {
         if (actualType == NbtTagType.List)
         {
@@ -123,16 +123,16 @@ internal sealed class LongArrayConverter(NbtLengthCodec lengths, NbtNumericCodec
             return FixedArrayIO.ReadInt64(stream, count, numeric);
         }
         NbtSerializer.EnsureTagType(NbtTagType.LongArray, actualType);
-        return ReadPayload(stream);
+        return ReadPayload(stream, depth);
     }
 
-    public override long[] ReadPayload(Stream stream)
+    public override long[] ReadPayload(Stream stream, int depth)
     {
         EnsureSupported();
         return FixedArrayIO.ReadInt64(stream, lengths.ReadCollectionLength(stream), numeric);
     }
 
-    public override void WritePayload(Stream stream, long[]? value)
+    public override void WritePayload(Stream stream, long[]? value, int depth)
     {
         if (value is null) throw new InvalidDataException("NBT has no null array value.");
         if (!useArray)
@@ -234,7 +234,7 @@ internal static class FixedArrayIO
 internal sealed class FloatArrayConverter(NbtLengthCodec lengths, NbtNumericCodec numeric) : NbtConverter<float[]>
 {
     public override NbtTagType TagType => NbtTagType.List;
-    public override float[] ReadPayload(Stream stream)
+    public override float[] ReadPayload(Stream stream, int depth)
     {
         if (NbtSerializer.ReadByte(stream) != (byte)NbtTagType.Float) throw new InvalidDataException("Expected TAG_Float list elements.");
         float[] result = GC.AllocateUninitializedArray<float>(lengths.ReadCollectionLength(stream));
@@ -244,7 +244,7 @@ internal sealed class FloatArrayConverter(NbtLengthCodec lengths, NbtNumericCode
         return result;
     }
 
-    public override void WritePayload(Stream stream, float[]? value)
+    public override void WritePayload(Stream stream, float[]? value, int depth)
     {
         if (value is null) throw new InvalidDataException("NBT has no null array value.");
         stream.WriteByte((byte)NbtTagType.Float);
@@ -268,7 +268,7 @@ internal sealed class FloatArrayConverter(NbtLengthCodec lengths, NbtNumericCode
 internal sealed class DoubleArrayConverter(NbtLengthCodec lengths, NbtNumericCodec numeric) : NbtConverter<double[]>
 {
     public override NbtTagType TagType => NbtTagType.List;
-    public override double[] ReadPayload(Stream stream)
+    public override double[] ReadPayload(Stream stream, int depth)
     {
         if (NbtSerializer.ReadByte(stream) != (byte)NbtTagType.Double) throw new InvalidDataException("Expected TAG_Double list elements.");
         double[] result = GC.AllocateUninitializedArray<double>(lengths.ReadCollectionLength(stream));
@@ -278,7 +278,7 @@ internal sealed class DoubleArrayConverter(NbtLengthCodec lengths, NbtNumericCod
         return result;
     }
 
-    public override void WritePayload(Stream stream, double[]? value)
+    public override void WritePayload(Stream stream, double[]? value, int depth)
     {
         if (value is null) throw new InvalidDataException("NBT has no null array value.");
         stream.WriteByte((byte)NbtTagType.Double);

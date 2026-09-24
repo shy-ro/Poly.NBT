@@ -28,6 +28,9 @@ namespace Poly.NBT.Snbt;
 /// </remarks>
 public static class SnbtWriter
 {
+    /// <summary>The nesting level of the outermost value.</summary>
+    private const int RootDepth = 1;
+
     /// <summary>The bound covers the widest expansion any <see cref="double"/> can need: 324 fractional digits.</summary>
     private static readonly string Zeroes = new('0', 400);
 
@@ -40,7 +43,7 @@ public static class SnbtWriter
     {
         ArgumentNullException.ThrowIfNull(writer);
         ArgumentNullException.ThrowIfNull(element);
-        AppendElement(writer, element, options);
+        AppendElement(writer, element, options, RootDepth);
     }
 
     /// <summary>Writes the root element of a document using the <see cref="SnbtOptions.v1_21_5"/> dialect.</summary>
@@ -52,7 +55,7 @@ public static class SnbtWriter
     {
         ArgumentNullException.ThrowIfNull(writer);
         ArgumentNullException.ThrowIfNull(document);
-        AppendElement(writer, document.RootElement, options);
+        AppendElement(writer, document.RootElement, options, RootDepth);
     }
 
     /// <summary>Formats an element as SNBT text using the <see cref="SnbtOptions.v1_21_5"/> dialect.</summary>
@@ -64,7 +67,7 @@ public static class SnbtWriter
     {
         ArgumentNullException.ThrowIfNull(element);
         using var writer = new StringWriter(CultureInfo.InvariantCulture);
-        AppendElement(writer, element, options);
+        AppendElement(writer, element, options, RootDepth);
         return writer.ToString();
     }
 
@@ -79,7 +82,7 @@ public static class SnbtWriter
         return Write(document.RootElement, options);
     }
 
-    private static void AppendElement(TextWriter writer, NbtElement element, SnbtOptions options)
+    private static void AppendElement(TextWriter writer, NbtElement element, SnbtOptions options, int depth)
     {
         switch (element)
         {
@@ -90,13 +93,30 @@ public static class SnbtWriter
             case NbtFloat item: AppendFloat(writer, item.Value, options); break;
             case NbtDouble item: AppendDouble(writer, item.Value, options); break;
             case NbtString item: AppendString(writer, item.Value); break;
-            case NbtList item: AppendList(writer, item, options); break;
-            case NbtCompound item: AppendCompound(writer, item, options); break;
+            case NbtList item: AppendList(writer, item, options, depth); break;
+            case NbtCompound item: AppendCompound(writer, item, options, depth); break;
             case NbtByteArray item: AppendByteArray(writer, item.Value); break;
             case NbtIntArray item: AppendIntArray(writer, item.Value); break;
             case NbtLongArray item: AppendLongArray(writer, item.Value); break;
             default: throw new NotSupportedException($"Unknown NBT DOM type {element.GetType()}.");
         }
+    }
+
+    /// <summary>
+    /// Returns the nesting level of a child of the value at <paramref name="depth"/>, or throws when that would
+    /// exceed <see cref="SnbtOptions.MaxDepth"/>.
+    /// </summary>
+    /// <remarks>
+    /// Writing recurses once per nesting level, so an arbitrarily deep user-built tree would otherwise exhaust
+    /// the stack. <see cref="StackOverflowException"/> cannot be caught in .NET, so the limit is the only way to
+    /// fail recoverably.
+    /// </remarks>
+    private static int Descend(SnbtOptions options, int depth)
+    {
+        int next = depth + 1;
+        return next > options.EffectiveMaxDepth
+            ? throw new InvalidDataException($"The SNBT document nests more than {options.EffectiveMaxDepth} levels deep; raise SnbtOptions.MaxDepth to accept it.")
+            : next;
     }
 
     /// <summary>Writes an integer in the invariant culture, optionally followed by a type suffix.</summary>
@@ -110,19 +130,19 @@ public static class SnbtWriter
         if (suffix != '\0') writer.Write(suffix);
     }
 
-    private static void AppendList(TextWriter writer, NbtList list, SnbtOptions options)
+    private static void AppendList(TextWriter writer, NbtList list, SnbtOptions options, int depth)
     {
         writer.Write('[');
         for (int index = 0; index < list.Count; index++)
         {
             if (index > 0) writer.Write(',');
-            AppendElement(writer, list[index], options);
+            AppendElement(writer, list[index], options, Descend(options, depth));
         }
 
         writer.Write(']');
     }
 
-    private static void AppendCompound(TextWriter writer, NbtCompound compound, SnbtOptions options)
+    private static void AppendCompound(TextWriter writer, NbtCompound compound, SnbtOptions options, int depth)
     {
         writer.Write('{');
         bool first = true;
@@ -132,7 +152,7 @@ public static class SnbtWriter
             first = false;
             AppendString(writer, key);
             writer.Write(':');
-            AppendElement(writer, value, options);
+            AppendElement(writer, value, options, Descend(options, depth));
         }
 
         writer.Write('}');

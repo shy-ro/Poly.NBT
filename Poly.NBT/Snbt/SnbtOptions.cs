@@ -16,6 +16,9 @@ namespace Poly.NBT.Snbt;
 /// </remarks>
 public readonly record struct SnbtOptions
 {
+    /// <summary>The nesting limit used when <see cref="MaxDepth"/> is not set.</summary>
+    public const int DefaultMaxDepth = 512;
+
     /// <summary>Allows a single trailing comma after the last valid element of a list or compound (25w09a).</summary>
     public bool AllowTrailingCommas { get; init; }
 
@@ -50,8 +53,28 @@ public readonly record struct SnbtOptions
     /// <summary>Allows the <c>bool(arg)</c> and <c>uuid(str)</c> text operations (25w10a).</summary>
     public bool AllowSnbtOperations { get; init; }
 
+    /// <summary>
+    /// The maximum nesting depth a single value may reach, counting the outermost value as level one. Zero
+    /// selects <see cref="DefaultMaxDepth"/>.
+    /// </summary>
+    /// <remarks>
+    /// Unlike the other properties this one is not a syntax feature and is absent from both presets' source
+    /// dialects. Both the parser and the writer recurse once per nesting level, and the level count comes
+    /// straight from the input: a few kilobytes of nested brackets run the parser out of stack, and a stack
+    /// overflow cannot be caught in .NET - the process dies. The limit turns that into a
+    /// <see cref="SnbtParseException"/> from the parser and an <see cref="InvalidDataException"/> from the
+    /// writer.
+    /// </remarks>
+    public int MaxDepth { get; init; }
+
+    /// <summary>The nesting limit with <see cref="MaxDepth"/>'s zero sentinel resolved.</summary>
+    internal int EffectiveMaxDepth => MaxDepth > 0 ? MaxDepth : DefaultMaxDepth;
+
     /// <summary>The pre-1.21.5 dialect: strict, without any of the 1.21.5 extensions.</summary>
-    public static readonly SnbtOptions v1_13 = new();
+    public static readonly SnbtOptions v1_13 = new()
+    {
+        MaxDepth = DefaultMaxDepth,
+    };
 
     /// <summary>The 1.21.5 dialect: enables every extension of the 1.21.5 text format.</summary>
     public static readonly SnbtOptions v1_21_5 = new()
@@ -65,5 +88,6 @@ public readonly record struct SnbtOptions
         AllowUnderscoreSeparators = true,
         AllowSignednessSuffixes = true,
         AllowSnbtOperations = true,
+        MaxDepth = DefaultMaxDepth,
     };
 }

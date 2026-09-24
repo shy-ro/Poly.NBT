@@ -8,8 +8,8 @@ internal abstract class NbtPropertyConverter<TDeclaring>(string name, int positi
     public int Position { get; } = position;
     public abstract bool HasGetter { get; }
     public abstract bool HasSetter { get; }
-    public abstract void ReadPayload(Stream stream, NbtTagType actualType, ref TDeclaring target);
-    public abstract void Write(Stream stream, ref TDeclaring target);
+    public abstract void ReadPayload(Stream stream, NbtTagType actualType, ref TDeclaring target, int depth);
+    public abstract void Write(Stream stream, ref TDeclaring target, int depth);
 }
 
 internal sealed class NbtPropertyConverter<TDeclaring, TProperty> : NbtPropertyConverter<TDeclaring>
@@ -47,13 +47,13 @@ internal sealed class NbtPropertyConverter<TDeclaring, TProperty> : NbtPropertyC
     public override bool HasGetter => _getter is not null;
     public override bool HasSetter => _setter is not null;
 
-    public override void ReadPayload(Stream stream, NbtTagType actualType, ref TDeclaring target)
+    public override void ReadPayload(Stream stream, NbtTagType actualType, ref TDeclaring target, int depth)
     {
-        TProperty? value = _converter.ReadPayload(stream, actualType);
+        TProperty? value = _converter.ReadPayload(stream, actualType, depth);
         (_setter ?? throw new InvalidOperationException()).Invoke(ref target, value!);
     }
 
-    public override void Write(Stream stream, ref TDeclaring target)
+    public override void Write(Stream stream, ref TDeclaring target, int depth)
     {
         TProperty value = (_getter ?? throw new InvalidOperationException()).Invoke(ref target);
         if (!_converter.ShouldWrite(value)) return;
@@ -64,7 +64,7 @@ internal sealed class NbtPropertyConverter<TDeclaring, TProperty> : NbtPropertyC
             stream.WriteByte((byte)tagType);
             _serializer.Strings.Write(stream, Name);
         }
-        _converter.WritePayload(stream, value);
+        _converter.WritePayload(stream, value, depth);
     }
 }
 
@@ -83,16 +83,16 @@ internal class NbtObjectConverter<T> : NbtConverter<T>
 
     public override NbtTagType TagType => NbtTagType.Compound;
 
-    public override T? ReadPayload(Stream stream) => throw new NotSupportedException($"Type {typeof(T)} has no usable constructor.");
+    public override T? ReadPayload(Stream stream, int depth) => throw new NotSupportedException($"Type {typeof(T)} has no usable constructor.");
 
-    public sealed override void WritePayload(Stream stream, T? value)
+    public sealed override void WritePayload(Stream stream, T? value, int depth)
     {
         if (value is null) throw new InvalidDataException("NBT has no null compound value.");
-        foreach (NbtPropertyConverter<T> property in _propertiesToWrite) property.Write(stream, ref value);
+        foreach (NbtPropertyConverter<T> property in _propertiesToWrite) property.Write(stream, ref value, Serializer.Descend(depth));
         stream.WriteByte((byte)NbtTagType.End);
     }
 
-    protected void ReadProperties(Stream stream, ref T result)
+    protected void ReadProperties(Stream stream, ref T result, int depth)
     {
         HashSet<int> seen = [];
         while (Serializer.ReadTagType(stream) is { } type && type != NbtTagType.End)
@@ -100,12 +100,12 @@ internal class NbtObjectConverter<T> : NbtConverter<T>
             string name = Serializer.Strings.Read(stream);
             if (!PropertiesToRead.TryGetValue(name, out NbtPropertyConverter<T>? property))
             {
-                Serializer.SkipPayload(stream, type);
+                Serializer.SkipPayload(stream, type, Serializer.Descend(depth));
                 continue;
             }
 
             if (!seen.Add(property.Position)) throw new InvalidDataException($"Duplicate NBT property '{name}'.");
-            property.ReadPayload(stream, type, ref result);
+            property.ReadPayload(stream, type, ref result, Serializer.Descend(depth));
         }
     }
 }
@@ -115,10 +115,10 @@ internal sealed class NbtDefaultObjectConverter<T>(
     NbtPropertyConverter<T>[] properties,
     Func<T> constructor) : NbtObjectConverter<T>(serializer, properties)
 {
-    public override T ReadPayload(Stream stream)
+    public override T ReadPayload(Stream stream, int depth)
     {
         T result = constructor();
-        ReadProperties(stream, ref result);
+        ReadProperties(stream, ref result, depth);
         return result;
     }
 }
@@ -133,7 +133,7 @@ internal sealed class NbtParameterizedObjectConverter<T, TArgumentState>(
 {
     private readonly Dictionary<string, NbtPropertyConverter<TArgumentState>> _parameters = parameters.ToDictionary(item => item.Name, StringComparer.Ordinal);
 
-    public override T ReadPayload(Stream stream)
+    public override T ReadPayload(Stream stream, int depth)
     {
         TArgumentState state = createState();
         while (Serializer.ReadTagType(stream) is { } type && type != NbtTagType.End)
@@ -141,12 +141,12 @@ internal sealed class NbtParameterizedObjectConverter<T, TArgumentState>(
             string name = Serializer.Strings.Read(stream);
             if (!_parameters.TryGetValue(name, out NbtPropertyConverter<TArgumentState>? parameter))
             {
-                Serializer.SkipPayload(stream, type);
+                Serializer.SkipPayload(stream, type, Serializer.Descend(depth));
                 continue;
             }
 
             if (state.IsArgumentSet(parameter.Position)) throw new InvalidDataException($"Duplicate NBT property '{name}'.");
-            parameter.ReadPayload(stream, type, ref state);
+            parameter.ReadPayload(stream, type, ref state, Serializer.Descend(depth));
         }
 
         if (!state.AreRequiredArgumentsSet) throw new InvalidDataException($"Required constructor arguments for {typeof(T)} are missing.");

@@ -4,7 +4,7 @@ namespace Poly.NBT.Snbt;
 
 public static partial class SnbtParser
 {
-    private static NbtCompound ReadCompound(ref SnbtLexer lexer, SnbtOptions options)
+    private static NbtCompound ReadCompound(ref SnbtLexer lexer, SnbtOptions options, int depth)
     {
         lexer.Advance();
         var entries = new List<KeyValuePair<string, NbtElement>>();
@@ -27,7 +27,7 @@ public static partial class SnbtParser
             if (lexer.Current != ':') throw lexer.Error("Expected ':' after a compound key.");
             lexer.Advance();
 
-            NbtElement value = ReadValue(ref lexer, options);
+            NbtElement value = ReadValue(ref lexer, options, Descend(ref lexer, options, depth));
             if (!seen.Add(key)) throw new SnbtParseException($"Duplicate compound key '{key}'.", keyOffset);
             entries.Add(new(key, value));
 
@@ -45,7 +45,7 @@ public static partial class SnbtParser
         return token.Length == 0 ? throw lexer.Error("Expected a compound key.") : token.ToString();
     }
 
-    private static NbtElement ReadListOrArray(ref SnbtLexer lexer, SnbtOptions options)
+    private static NbtElement ReadListOrArray(ref SnbtLexer lexer, SnbtOptions options, int depth)
     {
         lexer.Advance();
         lexer.SkipWhitespace();
@@ -60,14 +60,14 @@ public static partial class SnbtParser
                 lexer.Advance();
                 lexer.SkipWhitespace();
                 lexer.Advance();
-                return ReadArray(ref lexer, options, marker);
+                return ReadArray(ref lexer, options, marker, depth);
             }
         }
 
-        return ReadList(ref lexer, options);
+        return ReadList(ref lexer, options, depth);
     }
 
-    private static NbtList ReadList(ref SnbtLexer lexer, SnbtOptions options)
+    private static NbtList ReadList(ref SnbtLexer lexer, SnbtOptions options, int depth)
     {
         var elements = new List<NbtElement>();
         NbtElement? first = null;
@@ -83,7 +83,7 @@ public static partial class SnbtParser
         {
             lexer.SkipWhitespace();
             int elementOffset = lexer.Position;
-            NbtElement element = ReadValue(ref lexer, options);
+            NbtElement element = ReadValue(ref lexer, options, Descend(ref lexer, options, depth));
             if (first is null) first = element;
             else if (!options.AllowHeterogeneousLists && element.GetType() != first.GetType())
                 throw new SnbtParseException("Heterogeneous lists are not allowed in this dialect.", elementOffset);
@@ -93,7 +93,7 @@ public static partial class SnbtParser
         }
     }
 
-    private static NbtElement ReadArray(ref SnbtLexer lexer, SnbtOptions options, char marker)
+    private static NbtElement ReadArray(ref SnbtLexer lexer, SnbtOptions options, char marker, int depth)
     {
         var values = new List<long>();
 
@@ -108,14 +108,14 @@ public static partial class SnbtParser
         {
             lexer.SkipWhitespace();
             int elementOffset = lexer.Position;
-            values.Add(ReadArrayElement(ref lexer, options, marker, elementOffset));
+            values.Add(ReadArrayElement(ref lexer, options, marker, elementOffset, depth));
             if (EndOfElements(ref lexer, options, ']')) return BuildArray(marker, values);
         }
     }
 
-    private static long ReadArrayElement(ref SnbtLexer lexer, SnbtOptions options, char marker, int offset)
+    private static long ReadArrayElement(ref SnbtLexer lexer, SnbtOptions options, char marker, int offset, int depth)
     {
-        long value = ReadValue(ref lexer, options) switch
+        long value = ReadValue(ref lexer, options, Descend(ref lexer, options, depth)) switch
         {
             NbtByte item => item.Value,
             NbtShort item => item.Value,

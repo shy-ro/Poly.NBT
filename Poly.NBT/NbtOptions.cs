@@ -33,15 +33,19 @@ public enum NbtRootTagNaming : byte
 /// collections as the matching array tag.
 /// </para>
 /// <para>
-/// <see cref="default"/> is not a preset and is not intended to be one. It is nonetheless a coherent dialect -
-/// big-endian, Modified UTF-8, fixed-width numbers, a named root - that simply leaves both boolean capabilities
-/// switched off, so <see cref="OptimizePrimitiveListsToArrays"/> is <see langword="false"/> there. Because the
-/// type stores that flag as a plain <see langword="bool"/>, two instances compare equal exactly when their
-/// properties read the same, which keeps the value a usable dictionary key and a predictable <c>with</c> result.
+/// <see cref="NbtSerializer.Create(NbtOptions)"/> also accepts <c>default(NbtOptions)</c>. That is not a preset
+/// and is not intended to be one, but it is nonetheless coherent - big-endian, Modified UTF-8, fixed-width
+/// numbers, a named root - and simply leaves both boolean capabilities switched off, so
+/// <see cref="OptimizePrimitiveListsToArrays"/> is <see langword="false"/> there. Because the type stores that
+/// flag as a plain <see langword="bool"/>, two instances compare equal exactly when their properties read the
+/// same, which keeps the value a usable dictionary key and a predictable <c>with</c> result.
 /// </para>
 /// </remarks>
 public readonly record struct NbtOptions
 {
+    /// <summary>The nesting limit used when <see cref="MaxDepth"/> is not set.</summary>
+    public const int DefaultMaxDepth = 512;
+
     public NbtEndianness Endianness { get; init; }
     public NbtStringEncoding StringEncoding { get; init; }
     public NbtNumericEncoding NumericEncoding { get; init; }
@@ -57,10 +61,27 @@ public readonly record struct NbtOptions
     /// </summary>
     public bool OptimizePrimitiveListsToArrays { get; init; }
 
+    /// <summary>
+    /// The maximum nesting depth a single document may reach, counting the root tag as level one. Zero selects
+    /// <see cref="DefaultMaxDepth"/>.
+    /// </summary>
+    /// <remarks>
+    /// Reading is driven by the wire format, so a small input can describe a deeply nested document: a few
+    /// kilobytes of <c>TAG_List</c> headers are enough to run the recursive readers out of stack, and a stack
+    /// overflow cannot be caught in .NET - the process dies. This limit turns that into an
+    /// <see cref="InvalidDataException"/>. Writing is bounded the same way, so a user-built tree cannot overflow
+    /// the stack either.
+    /// </remarks>
+    public int MaxDepth { get; init; }
+
+    /// <summary>The nesting limit with <see cref="MaxDepth"/>'s zero sentinel resolved.</summary>
+    internal int EffectiveMaxDepth => MaxDepth > 0 ? MaxDepth : DefaultMaxDepth;
+
     public static readonly NbtOptions JavaEdition = new()
     {
         SupportsLongArray = true,
         OptimizePrimitiveListsToArrays = true,
+        MaxDepth = DefaultMaxDepth,
     };
 
     public static readonly NbtOptions JavaNetworkEdition = JavaEdition with
@@ -74,6 +95,7 @@ public readonly record struct NbtOptions
         StringEncoding = NbtStringEncoding.Utf8WithEscapes,
         SupportsLongArray = false,
         OptimizePrimitiveListsToArrays = true,
+        MaxDepth = DefaultMaxDepth,
     };
 
     public static readonly NbtOptions BedrockNetworkEdition = BedrockEdition with
