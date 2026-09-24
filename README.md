@@ -279,6 +279,10 @@ can tell corruption from a limit it needs to raise. See [Malformed input](docs/i
 - Enums map to the smallest integer tag for their underlying type; no names are written.
 - `NbtSerializer.Create` requires explicit options.
 
+## License
+
+MIT. See [LICENSE](LICENSE).
+
 ## Going deeper
 
 [docs/internals.md](docs/internals.md) covers the configuration reference, the reasoning behind each limit,

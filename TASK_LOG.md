@@ -1,5 +1,46 @@
 # Task Log
 
+## 2026-09-25 - License Poly.NBT under MIT
+
+### Scope
+
+The library carried no license. Two earlier entries recorded that as a deliberate gap: the packaging entry
+left `PackageLicenseExpression` out on the grounds that naming a license in the package would assert a choice
+the project had not made, and left a comment in the project file saying the file and the expression had to be
+added together. The choice is now MIT, which turns that comment into the change itself.
+
+### Actual Changes
+
+- `LICENSE` added at the repository root: the standard MIT text, with the year taken from the system clock and
+  the copyright holder from the project's own `Authors` value (`shy-ro`), so the two cannot drift.
+- The packaging-metadata comment in `Poly.NBT.csproj` is gone, replaced by
+  `<PackageLicenseExpression>MIT</PackageLicenseExpression>` in the same property group. The comment existed
+  only to record the absence; the absence is the thing being fixed.
+- The package now carries a copy of `LICENSE` at its root, next to the already-packed `README.md`. Under an
+  SPDX expression NuGet does not require the text, but the package is published on its own and the README's
+  relative `[LICENSE](LICENSE)` link would otherwise resolve to nothing inside it. `PackageLicenseFile` is not
+  used and cannot be combined with `PackageLicenseExpression`.
+- README gains a `## License` section between `Requirements` and `Going deeper`: one sentence and the link.
+
+### Verification
+
+- `dotnet pack Poly.NBT/Poly.NBT.csproj`: produced `Poly.NBT.0.1.0.nupkg` with no warnings. The package was
+  opened and its `.nuspec` read back, which now carries `<license type="expression">MIT</license>` and the
+  derived `https://licenses.nuget.org/MIT`; the archive listing contains `LICENSE` and `README.md` at the
+  root alongside `lib/net10.0/Poly.NBT.dll` and `Poly.NBT.xml`. The temporary output was removed afterwards.
+- `dotnet build Poly.NBT.slnx`: 0 warnings, 0 errors. `dotnet test Poly.NBT.slnx --no-build --no-restore`:
+  209/209 passed. `dotnet format --verify-no-changes --severity warn` and `git diff --check`: clean.
+- Only packaging and documentation changed; no source or test file is touched by this entry.
+
+### Known Issues and Next
+
+- The two fNbt fixtures in `Poly.NBT.Tests/TestFiles` stay under BSD-3-Clause and keep their own
+  `fNbt-LICENSE.txt`. The README's `Acknowledgements` section still carries that notice; the next entry moves
+  it out of the user-facing document.
+- The README's `not published to NuGet` line predates the packaging metadata and contradicts it, and its
+  `Native AOT-friendly` claim has no end-to-end evidence behind it. Both are fixed in the next entry.
+- `VersionPrefix` stays at `0.1.0`. The license does not change that; nothing has shipped yet.
+
 ## 2026-09-25 - Split the README into a usage guide and an internals reference
 
 ### Scope

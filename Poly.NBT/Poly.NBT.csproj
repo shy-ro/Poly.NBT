@@ -11,15 +11,13 @@
         <NoWarn>$(NoWarn);CS1591</NoWarn>
     </PropertyGroup>
 
-    <!-- Packaging metadata. There is deliberately no PackageLicenseExpression: the repository has no license
-         file, and naming one here would assert a choice the project has not made. Add both together when it
-         does. VersionPrefix stays below 1.0 until the API has shipped. -->
     <PropertyGroup>
         <PackageId>Poly.NBT</PackageId>
         <VersionPrefix>0.1.0</VersionPrefix>
         <Title>Poly.NBT</Title>
         <Description>PolyType-based, Native AOT-friendly serialization for the Java and Bedrock NBT wire formats, with SNBT text support.</Description>
         <Authors>shy-ro</Authors>
+        <PackageLicenseExpression>MIT</PackageLicenseExpression>
         <PackageTags>nbt;minecraft;serialization;polytype;aot;snbt</PackageTags>
         <RepositoryType>git</RepositoryType>
         <RepositoryUrl>https://github.com/shy-ro/Poly.NBT</RepositoryUrl>
@@ -32,6 +30,7 @@
 
     <ItemGroup>
         <None Include="../README.md" Pack="true" PackagePath="/" />
+        <None Include="../LICENSE" Pack="true" PackagePath="/" />
     </ItemGroup>
 
 </Project>
