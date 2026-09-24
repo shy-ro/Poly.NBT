@@ -112,7 +112,9 @@ NbtDocument document = SnbtParser.ParseDocument(new StringReader(text));
 ```
 
 `SnbtParser.Parse` reads exactly one value and throws `SnbtParseException` (carrying the character
-`Offset` of the failure) on malformed input. SNBT has no root tag name, so `ParseDocument` returns a
+`Offset` of the failure) on malformed input. The text overloads take a `ReadOnlySpan<char>`, so a `string`
+binds to them through the built-in implicit conversion and no intermediate copy is created; the
+`TextReader` overloads cover streams. SNBT has no root tag name, so `ParseDocument` returns a
 document whose `RootTagName` is `string.Empty`. `SnbtWriter` emits compact single-line output:
 byte/short/long literals carry their `b`/`s`/`L` suffixes, floating point uses `"R"` round-trip
 formatting followed by `f`/`d`, and strings stay bare unless quoting is required. Every overload has a

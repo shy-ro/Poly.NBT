@@ -64,6 +64,16 @@ public sealed class SnbtParserTests
     }
 
     [Fact]
+    public void ParsesFromASpanThatIsNotAString()
+    {
+        char[] buffer = "{a:[1,2],b:true}".ToCharArray();
+
+        // The span overloads must not depend on a string being materialized first.
+        Assert.Equal("{a:[1,2],b:1b}", SnbtWriter.Write(SnbtParser.Parse(buffer.AsSpan())));
+        Assert.Equal(string.Empty, SnbtParser.ParseDocument(buffer.AsSpan()).RootTagName);
+    }
+
+    [Fact]
     public void ParsesUnderscoreSeparators()
     {
         Assert.Equal(new NbtInt(1000), SnbtParser.Parse("1_000"));

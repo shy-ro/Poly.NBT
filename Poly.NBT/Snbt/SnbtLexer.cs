@@ -3,10 +3,21 @@ using System.Text;
 namespace Poly.NBT.Snbt;
 
 /// <summary>Character-level scanner over an in-memory SNBT document.</summary>
-internal sealed class SnbtLexer(string text)
+/// <remarks>
+/// This is a <see langword="ref struct"/> so that it can hold the input as a <see cref="ReadOnlySpan{T}"/>
+/// rather than a string. Because a struct copy would not share the cursor, every parser method that reads
+/// from it takes it by reference.
+/// </remarks>
+internal ref struct SnbtLexer
 {
-    private readonly string _text = text;
+    private readonly ReadOnlySpan<char> _text;
     private int _position;
+
+    public SnbtLexer(ReadOnlySpan<char> text)
+    {
+        _text = text;
+        _position = 0;
+    }
 
     public int Position => _position;
 
@@ -34,8 +45,8 @@ internal sealed class SnbtLexer(string text)
         or (>= 'a' and <= 'z')
         or '_' or '-' or '+' or '.';
 
-    /// <summary>Reads a run of bare-string characters, returning the raw text.</summary>
-    public string ReadBareToken()
+    /// <summary>Reads a run of bare-string characters, returning a slice of the input.</summary>
+    public ReadOnlySpan<char> ReadBareToken()
     {
         int start = _position;
         while (_position < _text.Length && IsBareChar(_text[_position])) _position++;

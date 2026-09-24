@@ -20,7 +20,7 @@ internal static partial class SnbtNumbers
 {
     private const string SuffixLetters = "bBsSlLfFdDuUiI";
 
-    public static SnbtNumberStatus TryParse(string token, SnbtOptions options, out NbtElement? value, out string? error)
+    public static SnbtNumberStatus TryParse(ReadOnlySpan<char> token, SnbtOptions options, out NbtElement? value, out string? error)
     {
         value = null;
         error = null;
@@ -57,7 +57,7 @@ internal static partial class SnbtNumbers
             : ParseBased(token, index, radix, negative, options, out value, out error);
     }
 
-    private static SnbtNumberStatus ParseBased(string token, int index, int radix, bool negative, SnbtOptions options, out NbtElement? value, out string? error)
+    private static SnbtNumberStatus ParseBased(ReadOnlySpan<char> token, int index, int radix, bool negative, SnbtOptions options, out NbtElement? value, out string? error)
     {
         value = null;
         error = null;
@@ -100,7 +100,7 @@ internal static partial class SnbtNumbers
         return StoreInteger(magnitude, negative, unsignedSuffix ?? !negative, type, token, out value, out error);
     }
 
-    private static SnbtNumberStatus StoreInteger(ulong magnitude, bool negative, bool unsigned, NbtTagType type, string token, out NbtElement? value, out string? error)
+    private static SnbtNumberStatus StoreInteger(ulong magnitude, bool negative, bool unsigned, NbtTagType type, ReadOnlySpan<char> token, out NbtElement? value, out string? error)
     {
         value = null;
         error = null;

@@ -3,30 +3,33 @@ using Poly.NBT.Dom;
 namespace Poly.NBT.Snbt;
 
 /// <summary>Reads SNBT text into <see cref="NbtElement"/> trees.</summary>
+/// <remarks>
+/// The text overloads take a <see cref="ReadOnlySpan{T}"/>. A <see cref="string"/> argument binds to them
+/// through the built-in implicit conversion, so callers can keep passing strings directly.
+/// </remarks>
 public static partial class SnbtParser
 {
-    /// <summary>Parses a single SNBT value using the modern (<see cref="SnbtOptions.v1_21_5"/>) dialect.</summary>
+    /// <summary>Parses a single SNBT value read from a text reader using the modern (<see cref="SnbtOptions.v1_21_5"/>) dialect.</summary>
     public static NbtElement Parse(TextReader reader) => Parse(reader, SnbtOptions.v1_21_5);
 
-    /// <summary>Parses a single SNBT value using the given dialect.</summary>
+    /// <summary>Parses a single SNBT value read from a text reader using the given dialect.</summary>
     public static NbtElement Parse(TextReader reader, SnbtOptions options)
     {
         ArgumentNullException.ThrowIfNull(reader);
-        return Parse(ReadAll(reader), options);
+        return Parse(ReadAll(reader).AsSpan(), options);
     }
 
-    /// <summary>Parses a single SNBT value from a string using the modern dialect.</summary>
-    public static NbtElement Parse(string text) => Parse(text, SnbtOptions.v1_21_5);
+    /// <summary>Parses a single SNBT value using the modern dialect.</summary>
+    public static NbtElement Parse(ReadOnlySpan<char> text) => Parse(text, SnbtOptions.v1_21_5);
 
-    /// <summary>Parses a single SNBT value from a string using the given dialect.</summary>
-    public static NbtElement Parse(string text, SnbtOptions options)
+    /// <summary>Parses a single SNBT value using the given dialect.</summary>
+    public static NbtElement Parse(ReadOnlySpan<char> text, SnbtOptions options)
     {
-        ArgumentNullException.ThrowIfNull(text);
         var lexer = new SnbtLexer(text);
         lexer.SkipWhitespace();
         if (lexer.AtEnd) throw lexer.Error("Expected an SNBT value but reached the end of the input.");
 
-        NbtElement element = ReadValue(lexer, options);
+        NbtElement element = ReadValue(ref lexer, options);
         lexer.SkipWhitespace();
         if (!lexer.AtEnd) throw lexer.Error("Unexpected content after the SNBT value.");
         return element;
@@ -37,18 +40,18 @@ public static partial class SnbtParser
     /// </summary>
     public static NbtDocument ParseDocument(TextReader reader) => ParseDocument(reader, SnbtOptions.v1_21_5);
 
-    /// <summary>Parses a single SNBT value into a document using the given dialect.</summary>
+    /// <summary>Parses a single SNBT value read from a text reader into a document using the given dialect.</summary>
     public static NbtDocument ParseDocument(TextReader reader, SnbtOptions options)
     {
         ArgumentNullException.ThrowIfNull(reader);
-        return ParseDocument(ReadAll(reader), options);
+        return ParseDocument(ReadAll(reader).AsSpan(), options);
     }
 
     /// <summary>Parses a single SNBT value into a document using the modern dialect.</summary>
-    public static NbtDocument ParseDocument(string text) => ParseDocument(text, SnbtOptions.v1_21_5);
+    public static NbtDocument ParseDocument(ReadOnlySpan<char> text) => ParseDocument(text, SnbtOptions.v1_21_5);
 
     /// <summary>Parses a single SNBT value into a document using the given dialect.</summary>
-    public static NbtDocument ParseDocument(string text, SnbtOptions options)
+    public static NbtDocument ParseDocument(ReadOnlySpan<char> text, SnbtOptions options)
         => new(string.Empty, Parse(text, options));
 
     private static string ReadAll(TextReader reader)
@@ -57,30 +60,30 @@ public static partial class SnbtParser
         return text ?? string.Empty;
     }
 
-    private static NbtElement ReadValue(SnbtLexer lexer, SnbtOptions options)
+    private static NbtElement ReadValue(ref SnbtLexer lexer, SnbtOptions options)
     {
         lexer.SkipWhitespace();
         if (lexer.AtEnd) throw lexer.Error("Expected an SNBT value but reached the end of the input.");
 
         return lexer.Current switch
         {
-            '{' => ReadCompound(lexer, options),
-            '[' => ReadListOrArray(lexer, options),
+            '{' => ReadCompound(ref lexer, options),
+            '[' => ReadListOrArray(ref lexer, options),
             '"' or '\'' => new NbtString(lexer.ReadQuotedString()),
-            _ => ReadBare(lexer, options),
+            _ => ReadBare(ref lexer, options),
         };
     }
 
-    private static NbtElement ReadBare(SnbtLexer lexer, SnbtOptions options)
+    private static NbtElement ReadBare(ref SnbtLexer lexer, SnbtOptions options)
     {
         int start = lexer.Position;
-        string token = lexer.ReadBareToken();
+        ReadOnlySpan<char> token = lexer.ReadBareToken();
         if (token.Length == 0) throw lexer.Error("Expected an SNBT value.");
 
         if (options.AllowSnbtOperations && IsOperationName(token))
         {
             lexer.SkipWhitespace();
-            if (lexer.Current == '(') return ReadOperation(lexer, options, token, start);
+            if (lexer.Current == '(') return ReadOperation(ref lexer, options, token, start);
         }
 
         if (options.AllowBooleanLiterals)
@@ -93,14 +96,15 @@ public static partial class SnbtParser
         if (status == SnbtNumberStatus.Success) return number!;
         if (status == SnbtNumberStatus.Invalid) throw new SnbtParseException(error!, start);
 
-        return new NbtString(token);
+        // Only a value that is neither an operation, a boolean, nor a number becomes a string.
+        return new NbtString(token.ToString());
     }
 
-    private static bool IsOperationName(string token)
+    private static bool IsOperationName(ReadOnlySpan<char> token)
         => token.Equals("bool", StringComparison.OrdinalIgnoreCase)
             || token.Equals("uuid", StringComparison.OrdinalIgnoreCase);
 
-    private static NbtElement ReadOperation(SnbtLexer lexer, SnbtOptions options, string name, int start)
+    private static NbtElement ReadOperation(ref SnbtLexer lexer, SnbtOptions options, ReadOnlySpan<char> name, int start)
     {
         lexer.Advance();
 
@@ -115,7 +119,7 @@ public static partial class SnbtParser
             return ParseUuid(text, start);
         }
 
-        NbtElement argument = ReadValue(lexer, options);
+        NbtElement argument = ReadValue(ref lexer, options);
         lexer.SkipWhitespace();
         if (lexer.Current != ')') throw lexer.Error("Expected ')' to close the bool(...) operation.");
         lexer.Advance();

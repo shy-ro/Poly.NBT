@@ -1,5 +1,35 @@
 # Task Log
 
+## 2026-09-25 - Use ReadOnlySpan<char> in SNBT parser and lexer
+
+### Scope
+
+Replace the parser's string-based input path with `ReadOnlySpan<char>`, so scanning a document needs neither
+a string copy of the input nor an allocation per bare token.
+
+### Actual Changes
+
+- `SnbtLexer` is now a `ref struct` holding a `ReadOnlySpan<char>` instead of a `string`. A struct copy would
+  not share the cursor, so every `SnbtParser` method that reads from it now takes it by `ref`. This
+  propagation was not part of the original plan and is required for correctness rather than style.
+- `SnbtLexer.ReadBareToken` returns a slice of the input. `NbtString` values, compound keys, and `uuid()`
+  arguments materialize a string only where the DOM requires one, so numbers, booleans, and operations are
+  scanned without allocating.
+- `SnbtParser.Parse` and `ParseDocument` take `ReadOnlySpan<char>`. The `string` overloads were dropped: a
+  `string` argument binds through the built-in implicit conversion, which is also what removes the
+  `Parse(null)` overload ambiguity. The `TextReader` overloads remain for streams.
+- `SnbtNumbers` follows the lexer onto spans for every token parameter. Its float path still builds a
+  cleaned string before `TryParse`, because stripping underscores and normalizing a bare `.` needs a
+  transformation; only the signatures changed there.
+- Added `ParsesFromASpanThatIsNotAString`, which parses from a `char[]` span to prove the span path is not a
+  string in disguise. Existing `Parse("...")` call sites compile unchanged via the implicit conversion.
+
+### Verification
+
+- `dotnet build Poly.NBT.slnx --no-restore`: 0 warnings, 0 errors.
+- `dotnet test Poly.NBT.slnx --no-restore`: 114/114 passed (previously 113).
+- `dotnet format Poly.NBT.slnx --no-restore --verify-no-changes --severity warn`: passed.
+
 ## 2026-09-25 - Accept negative radix literals in SNBT
 
 ### Scope

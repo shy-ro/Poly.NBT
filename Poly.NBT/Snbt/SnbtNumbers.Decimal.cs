@@ -6,7 +6,7 @@ namespace Poly.NBT.Snbt;
 
 internal static partial class SnbtNumbers
 {
-    private static SnbtNumberStatus ParseDecimal(string token, int index, bool negative, SnbtOptions options, out NbtElement? value, out string? error)
+    private static SnbtNumberStatus ParseDecimal(ReadOnlySpan<char> token, int index, bool negative, SnbtOptions options, out NbtElement? value, out string? error)
     {
         value = null;
         error = null;
@@ -88,7 +88,7 @@ internal static partial class SnbtNumbers
         return StoreInteger(magnitude, negative, unsignedSuffix ?? false, type, token, out value, out error);
     }
 
-    private static SnbtNumberStatus ParseFloatValue(string token, int numberEnd, bool singlePrecision, out NbtElement? value, out string? error)
+    private static SnbtNumberStatus ParseFloatValue(ReadOnlySpan<char> token, int numberEnd, bool singlePrecision, out NbtElement? value, out string? error)
     {
         value = null;
         error = null;
@@ -127,7 +127,7 @@ internal static partial class SnbtNumbers
         return SnbtNumberStatus.Success;
     }
 
-    private static SnbtNumberStatus? SplitSuffix(string token, ref int index, SnbtOptions options, out char? typeLetter, out bool? unsignedSuffix, out string? error)
+    private static SnbtNumberStatus? SplitSuffix(ReadOnlySpan<char> token, ref int index, SnbtOptions options, out char? typeLetter, out bool? unsignedSuffix, out string? error)
     {
         typeLetter = null;
         unsignedSuffix = null;
@@ -181,7 +181,7 @@ internal static partial class SnbtNumbers
         return null;
     }
 
-    private static SnbtNumberStatus? CheckUnderscores(string token, int start, int end, SnbtOptions options, out string? error)
+    private static SnbtNumberStatus? CheckUnderscores(ReadOnlySpan<char> token, int start, int end, SnbtOptions options, out string? error)
     {
         error = null;
         if (start >= end) return null;
@@ -213,10 +213,10 @@ internal static partial class SnbtNumbers
         return null;
     }
 
-    private static bool TryParseSpecialFloat(string token, out NbtElement? value)
+    private static bool TryParseSpecialFloat(ReadOnlySpan<char> token, out NbtElement? value)
     {
         value = null;
-        string body = token;
+        ReadOnlySpan<char> body = token;
         char? suffix = null;
         if (body.Length > 1 && body[^1] is 'f' or 'F' or 'd' or 'D')
         {
@@ -233,22 +233,22 @@ internal static partial class SnbtNumbers
         }
 
         double number;
-        if (string.Equals(body, "NaN", StringComparison.OrdinalIgnoreCase)) number = double.NaN;
-        else if (string.Equals(body, "Infinity", StringComparison.OrdinalIgnoreCase)) number = negative ? double.NegativeInfinity : double.PositiveInfinity;
+        if (body.Equals("NaN", StringComparison.OrdinalIgnoreCase)) number = double.NaN;
+        else if (body.Equals("Infinity", StringComparison.OrdinalIgnoreCase)) number = negative ? double.NegativeInfinity : double.PositiveInfinity;
         else return false;
 
         value = suffix is 'f' or 'F' ? new NbtFloat((float)number) : new NbtDouble(number);
         return true;
     }
 
-    private static bool IsNumberCandidate(string token)
+    private static bool IsNumberCandidate(ReadOnlySpan<char> token)
     {
         char first = token[0];
         if (IsAsciiDigit(first)) return true;
         return first is '+' or '-' or '.' && token.Length > 1 && IsAsciiDigit(token[1]);
     }
 
-    private static bool HasExponentBody(string token, int index)
+    private static bool HasExponentBody(ReadOnlySpan<char> token, int index)
     {
         if (index < token.Length && token[index] is '+' or '-') index++;
         return index < token.Length && (IsAsciiDigit(token[index]) || token[index] == '_');
@@ -256,9 +256,9 @@ internal static partial class SnbtNumbers
 
     private static bool IsAsciiDigit(char value) => value is >= '0' and <= '9';
 
-    private static bool IsHexDigit(string token, int index) => index < token.Length && SnbtLexer.HexValue(token[index]) >= 0;
+    private static bool IsHexDigit(ReadOnlySpan<char> token, int index) => index < token.Length && SnbtLexer.HexValue(token[index]) >= 0;
 
-    private static bool IsBinaryDigit(string token, int index) => index < token.Length && token[index] is '0' or '1';
+    private static bool IsBinaryDigit(ReadOnlySpan<char> token, int index) => index < token.Length && token[index] is '0' or '1';
 
     private static int DigitValue(char value, int radix)
     {
