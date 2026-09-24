@@ -1,5 +1,44 @@
 # Task Log
 
+## 2026-09-25 - Give the project real packaging metadata
+
+### Scope
+
+Fix the first half of the audit's P3-6. `Poly.NBT.csproj` carried only build properties, so `dotnet pack`
+produced a package with the default id, a `1.0.0` version the project had never chosen, no description, no
+tags, no repository link, and no README. The README's `Implemented / Planned` table also still listed
+`ToElement` / `FromElement` as *Planned* while the same file documents them as working.
+
+### Actual Changes
+
+- Added `PackageId`, `VersionPrefix` (`0.1.0`), `Title`, `Description`, `Authors`, `PackageTags`,
+  `RepositoryType` and `RepositoryUrl` (read from the `origin` remote), and `PackageReadmeFile`, with a
+  `None` item that packs the repository README to the package root.
+- No `PackageLicenseExpression`. The repository has no license file, and naming one in the package would
+  assert a choice the project has not made; a comment in the project file says to add the two together.
+  `VersionPrefix` is below 1.0 on the same principle - nothing has shipped.
+- README's `Implemented / Planned` table moves `ToElement` / `FromElement` into the `Implemented` column,
+  which is where the rest of the document already treats them.
+
+### Verification
+
+- `dotnet build Poly.NBT.slnx --no-restore`: 0 warnings, 0 errors.
+- `dotnet test Poly.NBT.slnx --no-restore`: 209/209 passed.
+- `dotnet pack Poly.NBT/Poly.NBT.csproj -c Release`: produced `Poly.NBT.0.1.0.nupkg` with no warnings. The
+  package was opened and its `.nuspec` read back: id `Poly.NBT`, version `0.1.0`, the description and tags,
+  `README.md` at the package root, the repository URL with the packed commit, and the `PolyType` 1.4.1
+  dependency for `net10.0`. The temporary output was removed afterwards.
+- `dotnet format Poly.NBT.slnx --no-restore --verify-no-changes --severity warn`: passed.
+
+### Known Issues and Next
+
+- The library's own license is still undecided, which is now visible as a missing field in the package
+  rather than as silence. Adding a `LICENSE` file and a `PackageLicenseExpression` together is a project
+  decision, not a code change.
+- The README's opening claim of Native AOT friendliness is still unverified; that is P3-7, the AOT smoke
+  project, handled next.
+- The remaining P3 item is the tracked `TASK_LOG.md` decision.
+
 ## 2026-09-25 - Add an .editorconfig and fix what it reports
 
 ### Scope
