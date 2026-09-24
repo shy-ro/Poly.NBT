@@ -1,5 +1,50 @@
 # Task Log
 
+## 2026-09-25 - Add an .editorconfig and fix what it reports
+
+### Scope
+
+Fix the audit's P3-5. The repository had no `.editorconfig`, so `dotnet format` fell back to per-machine
+defaults and the style could neither be enforced nor reviewed. The format check the earlier commits ran was
+therefore checking much less than it appeared to: whitespace and line endings, but not import order, not
+unused usings, and not the language and framework-usage rules the project actually follows.
+
+### Actual Changes
+
+- Added a root `.editorconfig` with the rules the code already follows, which makes them enforceable rather
+  than incidental: four-space indentation, trimming and a final newline, file-scoped namespaces, usings
+  outside the namespace with `System.*` first, predefined type names over framework type names, readonly
+  fields, and the null-check shape in use. Rules the code does not follow uniformly are recorded as
+  preferences rather than warnings, so the file documents the house style without `dotnet format` rewriting
+  working code.
+- `end_of_line` is deliberately absent. Pinning it to `lf` was tried first and immediately produced hundreds
+  of `ENDOFLINE` errors against the Windows working tree, and pinning it to `crlf` would do the same on a
+  Linux checkout. Line endings stay Git's job.
+- Turning the rules on surfaced eight real findings, all fixed here: import order in `OptionalConverter.cs`,
+  `PrimitiveConverters.cs`, and `RuntimeObjectConverter.cs`; an unused `using System.Globalization` in
+  `SnbtNumbers.cs`; an unused `using PolyType.Abstractions` in `NbtSerializer.cs` and `GapCoverageTests.cs`;
+  and an unused `using System.Text` in `SnbtWriter.cs` and `SnbtWriterStreamingTests.cs`. Each had outlived
+  its last use, and nothing was checking.
+
+### Verification
+
+- `dotnet build Poly.NBT.slnx --no-restore`: 0 warnings, 0 errors.
+- `dotnet test Poly.NBT.slnx --no-restore`: 209/209 passed.
+- `dotnet format Poly.NBT.slnx --no-restore --verify-no-changes --severity warn`: passed with the new
+  configuration, and it reported the eight findings above before they were fixed - which is the evidence that
+  the file is being read and not merely present.
+- `IDE0005` is raised to a warning on purpose, so an unused using now fails the format check instead of
+  surviving indefinitely.
+
+### Known Issues and Next
+
+- `.editorconfig` has no `charset`. The files in the repository are mixed: several begin with a UTF-8 BOM and
+  the rest do not. Specifying either value would rewrite half the tree for no behavioral gain, so encoding is
+  left alone; normalizing it is a separate decision.
+- The remaining P3 items are untouched: package metadata and the `Implemented/Planned` table, an AOT smoke
+  project, and the tracked `TASK_LOG.md` decision. README needs no change for this one: `.editorconfig` is its
+  own documentation.
+
 ## 2026-09-25 - Reject a null DOM payload instead of dereferencing it
 
 ### Scope

@@ -2,7 +2,6 @@ using System.Collections.Concurrent;
 using System.Collections.Immutable;
 using Poly.NBT.Dom;
 using PolyType;
-using PolyType.Abstractions;
 using PolyType.ReflectionProvider;
 
 namespace Poly.NBT.Tests;

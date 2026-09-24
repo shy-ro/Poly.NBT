@@ -3,7 +3,6 @@ using Poly.NBT.Dom;
 using Poly.NBT.Internal;
 using Poly.NBT.Serialization;
 using PolyType;
-using PolyType.Abstractions;
 using PolyType.ReflectionProvider;
 using PolyType.Utilities;
 

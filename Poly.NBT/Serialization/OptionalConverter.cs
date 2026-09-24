@@ -1,5 +1,5 @@
-using PolyType.Abstractions;
 using PolyType;
+using PolyType.Abstractions;
 
 namespace Poly.NBT.Serialization;
 

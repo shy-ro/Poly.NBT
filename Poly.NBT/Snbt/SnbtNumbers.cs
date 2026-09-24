@@ -1,4 +1,3 @@
-using System.Globalization;
 using Poly.NBT.Dom;
 
 namespace Poly.NBT.Snbt;

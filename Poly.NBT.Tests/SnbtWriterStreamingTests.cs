@@ -1,4 +1,3 @@
-using System.Text;
 using Poly.NBT.Dom;
 using Poly.NBT.Snbt;
 

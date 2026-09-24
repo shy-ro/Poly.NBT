@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Text;
 using Poly.NBT.Dom;
 
 namespace Poly.NBT.Snbt;

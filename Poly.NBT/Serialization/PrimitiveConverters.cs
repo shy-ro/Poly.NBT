@@ -1,5 +1,5 @@
-using System.Buffers.Binary;
 using System.Buffers;
+using System.Buffers.Binary;
 using System.Runtime.InteropServices;
 using Poly.NBT.Internal;
 

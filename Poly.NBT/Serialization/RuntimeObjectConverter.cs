@@ -1,6 +1,6 @@
+using System.Collections.Concurrent;
 using Poly.NBT.Dom;
 using PolyType;
-using System.Collections.Concurrent;
 
 namespace Poly.NBT.Serialization;
 
