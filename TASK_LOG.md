@@ -1,5 +1,88 @@
 # Task Log
 
+## 2026-09-25 - Make the README a usage guide and its claims match the evidence
+
+### Scope
+
+Three defects and one structural problem, all in the same document. The README said the library "is not
+published to NuGet" two entries after the project was given a `PackageId`, a `VersionPrefix`, a
+`PackageReadmeFile`, and a `RepositoryUrl`, so the two files contradicted each other. It opened by calling
+itself "Native AOT-friendly" while `IsAotCompatible` enables analyzers and nothing more, which the
+limitations section already admitted. It listed the two Bedrock dialects beside the Java ones while
+`AGENTS.md` records that Bedrock has never been checked against a real corpus fixture.
+
+The structure was the fourth issue and the reason the first three survived: the document had drifted back
+into a reference. Nine sections explained *why* a rule exists, three recipes reproduced reasoning that
+`docs/internals.md` already carried, and the root-name rule and the malformed-input taxonomy were each told
+twice. A reader who wanted to round-trip a file had to pass a design rationale first.
+
+### Actual Changes
+
+- **The three contradictions are gone.** "not published to NuGet" becomes "not yet published to NuGet" and
+  now says what to do instead, including that `dotnet pack` produces a package. The AOT claim is reduced to
+  what the repository can show and carries a footnote: the analyzers are enabled, an end-to-end publish is
+  not run here. The two Bedrock dialects carry a footnote saying they reuse the Java codecs but have not been
+  validated against a real Bedrock corpus fixture.
+- **`## Root tag name` is deleted.** The one fact a caller needs — a named dialect writes the name field and
+  a network dialect omits it, the `rootTagName` argument only supplying its contents — is now a sentence in
+  `Choosing a dialect` with a link to the internals section that explains the reasoning. That section already
+  existed and said the same thing at length.
+- **`## Common tasks` is deleted**, all three of its subsections. "Read a document you did not write" was a
+  limit rationale, "Convert between an object and the DOM" was a cost analysis, and "Choose a shape you do
+  not own" was a PolyType attribute tutorial. The two that had code moved their code to the internals
+  sections that argue for them; the attribute tutorial was already covered by the `Entity` example there.
+- **The author-facing explanation is gone**: the reason a stream has to be repositioned, the aside that a
+  dialect is never chosen by accident, the three parameter comments in the root-name sample, the note that
+  the DOM has no setter, the "single most useful number" aside on `SnbtParseException`, the warning to write
+  with the same options you read with, the malformed-input taxonomy's justification, and the instructions for
+  reading the generated XML. The actionable half of each survives; the justification lives in the internals
+  document, which is where the links now point.
+- **The document is now exactly nine sections**: Supported, Getting started, Choosing a dialect, Working with
+  the DOM, SNBT text, Errors, Requirements, License, Going deeper. `Acknowledgements` is gone as a section;
+  the BSD-3-Clause notice for the fNbt fixtures became a sentence in `## License` linking to a new
+  third-party notices section in the internals document.
+- **`docs/internals.md` absorbs what was duplicated and gains what the links need**: a `Third-party notices`
+  section, a Bedrock limitation bullet (the list had an AOT one but no Bedrock one), an immutable-DOM bullet
+  in the object-model invariants, the defensive-options sample in the length section, the `ToElement` /
+  `FromElement` sample in the performance section, and a lead-in to the attribute section saying a model's
+  shape reaches the serializer unchanged. It already carried the root-name reasoning, the SNBT flag and
+  escape tables, the float and quoting rules, and the `Create` note.
+- **`Poly.NBT.csproj`** no longer says "Native AOT-friendly" in its `Description`, so the package metadata and
+  the README make the same claim. The `aot` tag stays; a tag is a search keyword, not an assertion.
+- **`AGENTS.md`** (untracked local guidance, updated in place): file layout refreshed, the license decision
+  recorded with its three-part rule, and a standing instruction added — no claim in either document may
+  exceed what the repository can demonstrate, and the README's `Supported` matrix is the single place that
+  states what is implemented.
+
+### Verification
+
+- Structure: the README's headings are now exactly the nine above, and `## Root tag name`, `## Common tasks`,
+  and `## Acknowledgements` appear nowhere in it.
+- Anchors: every `docs/internals.md#...` link in the README was resolved against the internals headings, and
+  every entry in the internals contents list was resolved the same way. Both directions are clean, including
+  the new `#third-party-notices` and `#root-tag-name`.
+- Probes: `Native AOT-friendly` returns nothing in either `README.md` or `Poly.NBT.csproj`; `not yet
+  published`, the two footnotes, and the `## License` section are present.
+- Samples: each call in the changed examples was checked against its declaration — `NbtList.TryToArray` takes
+  `[NotNullWhen(true)] out int[]?`, and `Serialize(Stream, NbtDocument)` exists as used. The rest of the
+  samples are unchanged from the previous entry, where the two that could not compile were fixed.
+- `dotnet pack Poly.NBT/Poly.NBT.csproj`: the nuspec now carries the corrected `<description>`, alongside the
+  `<license type="expression">MIT</license>` from the previous entry.
+- `dotnet build Poly.NBT.slnx --no-restore`: 0 warnings, 0 errors. `dotnet test Poly.NBT.slnx`: 209/209
+  passed. `dotnet format --verify-no-changes --severity warn` and `git diff --check`: clean. Documentation and
+  packaging metadata only; no source or test file changed.
+
+### Known Issues and Next
+
+- The Bedrock footnote is honesty, not a fix. Closing it needs a fixture captured from a real Bedrock world
+  or packet; until then both Bedrock presets stay asserted by construction.
+- The AOT footnote is the same kind of statement, and it is the residue of the P3-7 decision: the smoke
+  project was tried, failed only at the native link step for want of MSVC, and was not kept. Adding one
+  remains an option for a machine that has the workload.
+- The README now has no worked example for untrusted input beyond the `Requirements` bullet. The full
+  treatment, including the sample, is one link away in the internals document; this is deliberate, but it is
+  the one place where a reader could reasonably expect the guide to carry more.
+
 ## 2026-09-25 - License Poly.NBT under MIT
 
 ### Scope

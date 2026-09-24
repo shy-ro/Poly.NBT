@@ -15,7 +15,7 @@
         <PackageId>Poly.NBT</PackageId>
         <VersionPrefix>0.1.0</VersionPrefix>
         <Title>Poly.NBT</Title>
-        <Description>PolyType-based, Native AOT-friendly serialization for the Java and Bedrock NBT wire formats, with SNBT text support.</Description>
+        <Description>PolyType-based serialization for the Java and Bedrock NBT wire formats, with SNBT text support.</Description>
         <Authors>shy-ro</Authors>
         <PackageLicenseExpression>MIT</PackageLicenseExpression>
         <PackageTags>nbt;minecraft;serialization;polytype;aot;snbt</PackageTags>

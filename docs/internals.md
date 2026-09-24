@@ -18,6 +18,7 @@ sentence.
 - [SNBT dialects](#snbt-dialects)
 - [Performance](#performance)
 - [Limitations](#limitations)
+- [Third-party notices](#third-party-notices)
 
 ## Configuration notes
 
@@ -127,6 +128,19 @@ streams larger than a fixed number of bytes before handing them to `NbtSerialize
 `NbtAccounter` solves the same problem with running total accounting; `MaxCollectionLength` is the per-value
 equivalent.
 
+Both limits are per-value, so input of unknown provenance lowers them together:
+
+```csharp
+NbtOptions defensive = NbtOptions.JavaEdition with
+{
+    MaxDepth = 64,
+    MaxCollectionLength = 1 << 20,
+};
+NbtSerializer serializer = NbtSerializer.Create(defensive);
+```
+
+`MaxDepth` counts nesting levels rather than collection entries; see [Nesting depth](#nesting-depth).
+
 ## Lists
 
 A `TAG_List` is homogeneous: the header declares one element type and every element has to match it. The
@@ -152,6 +166,10 @@ caller has to work within rather than configuration.
   that order decides both the SNBT text and the wire bytes, so it is documented rather than left to the
   backing collection. Equality and hashing are order-independent, matching NBT's own unordered-map semantics:
   two compounds with the same entries in different orders are equal.
+- **The DOM is immutable.** Every element record exposes a get-only payload, and neither `NbtList`'s nor
+  `NbtCompound`'s indexer has a setter. There is no `Add` or `Remove`, so `compound["x"] = y` does not
+  compile: a document is changed by building the tree you want, or by going through a model type, whose
+  properties are ordinary and mutable.
 - **A payload is never absent.** `NbtString`, `NbtByteArray`, `NbtIntArray`, and `NbtLongArray` reject a null
   payload with `ArgumentNullException`. A `with` expression replaces the property without running the
   constructor, so it can still put one in; the writers then report `InvalidDataException` rather than
@@ -181,6 +199,9 @@ truncate: five groups encode 35 bits, so a hostile `TAG_Int` can carry a value t
 silently keeping the low bits would invent a value the sender never wrote.
 
 ## PolyType attributes
+
+A model's shape reaches the serializer unchanged, so PolyType's own attributes apply without an NBT-specific
+wrapper: a property can be renamed or skipped, and a type can be given a custom marshaler.
 
 ```csharp
 [GenerateShape]
@@ -313,6 +334,13 @@ materialized once. Several properties are worth knowing before putting this in a
   intermediate `string`. A quoted string with no escape is returned as a slice of the input directly, so only
   a string that actually holds an escape is built up character by character.
 
+The DOM bridge is the one conversion whose per-call cost is worth spelling out:
+
+```csharp
+NbtElement tree = serializer.ToElement(player, Player.GetTypeShape());
+Player? back = serializer.FromElement(tree, Player.GetTypeShape());
+```
+
 Primitive arrays transfer in one call each for a fixed-width dialect: 100,000 elements cost a single
 `ReadExactly` or `Write` over `MemoryMarshal.AsBytes`, with an `ArrayPool` byte-swap only when the dialect's
 byte order disagrees with the machine's. Scalars are read through `stackalloc` buffers, so reading an `int` or
@@ -326,6 +354,10 @@ throwaway probes run against the two revisions rather than from a harness kept i
 
 ## Limitations
 
+- **Bedrock is not corpus-validated.** `BedrockEdition` and `BedrockNetworkEdition` reuse the Java codecs with
+  a different endianness, string encoding, and number encoding, and the unit tests cover each of those
+  behaviors against hand-built bytes. What has never been done is reading a fixture captured from a real
+  Bedrock world or packet, so Bedrock support is asserted by construction rather than proven against the game.
 - **`\N{name}` is not supported.** SNBT defines thirteen string escapes; twelve are implemented in both quote
   styles, and the thirteenth indexes Unicode's name database (`\N{Snowman}`). A partial table would accept
   some names and silently reject others with no way for a caller to tell an unsupported name from a misspelled
@@ -345,3 +377,10 @@ throwaway probes run against the two revisions rather than from a harness kept i
   should run its own publish against its own target. On Windows that publish needs the MSVC linker from the
   "Desktop development with C++" workload, which is a .NET Native AOT requirement and not a dependency of
   this library.
+
+## Third-party notices
+
+The fixtures `test.nbt` and `bigtest.nbt` in `Poly.NBT.Tests/TestFiles` originate from
+[fNbt](https://github.com/mstefarov/fNbt) and are retained under BSD-3-Clause in
+`Poly.NBT.Tests/TestFiles/fNbt-LICENSE.txt`. They are test input and are not redistributed with the library
+package, which is MIT — see [LICENSE](../LICENSE).
