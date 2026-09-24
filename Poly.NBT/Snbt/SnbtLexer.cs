@@ -54,6 +54,11 @@ internal ref struct SnbtLexer
     }
 
     /// <summary>Reads a quoted string starting at the current character, decoding escape sequences.</summary>
+    /// <remarks>
+    /// Both quote styles accept the same twelve escape sequences, which is what the SNBT grammar specifies:
+    /// <c>\b</c>, <c>\f</c>, <c>\n</c>, <c>\r</c>, <c>\s</c>, <c>\t</c>, <c>\\</c>, <c>\'</c>, <c>\"</c>,
+    /// <c>\xhh</c>, <c>\uhhhh</c>, and <c>\UHHHHHHHH</c>. <c>\N{name}</c>, the thirteenth, is rejected.
+    /// </remarks>
     public string ReadQuotedString()
     {
         int start = _position;
@@ -76,49 +81,64 @@ internal ref struct SnbtLexer
 
             int escapeOffset = _position - 1;
             char escape = Advance();
-            if (quote == '\'')
-            {
-                // Single-quoted strings only recognize \' and \\.
-                switch (escape)
-                {
-                    case '\'': builder.Append('\''); break;
-                    case '\\': builder.Append('\\'); break;
-                    default: throw ErrorAt($"Unsupported escape sequence '\\{escape}' in a single-quoted string.", escapeOffset);
-                }
-
-                continue;
-            }
-
             switch (escape)
             {
-                case '"': builder.Append('"'); break;
-                case '\\': builder.Append('\\'); break;
+                case 'b': builder.Append('\b'); break;
+                case 'f': builder.Append('\f'); break;
                 case 'n': builder.Append('\n'); break;
-                case 't': builder.Append('\t'); break;
                 case 'r': builder.Append('\r'); break;
-                case 'u':
-                    builder.Append(ReadUnicodeEscape(escapeOffset));
-                    break;
+                case 's': builder.Append(' '); break;
+                case 't': builder.Append('\t'); break;
+                case '\\': builder.Append('\\'); break;
+                case '\'': builder.Append('\''); break;
+                case '"': builder.Append('"'); break;
+                case 'x': builder.Append((char)ReadHexEscape(2, escapeOffset, "\\x")); break;
+                case 'u': builder.Append((char)ReadHexEscape(4, escapeOffset, "\\u")); break;
+                case 'U': builder.Append(ReadCodePointEscape(escapeOffset)); break;
+                case 'N':
+                    // The grammar's thirteenth escape indexes a Unicode name table. Half a table would be
+                    // worse than none: it would accept \N{snowman} and reject \N{SNOWMAN} with no way for a
+                    // caller to tell an unsupported name from a misspelled one, so it is refused by name.
+                    throw ErrorAt("The \\N{name} escape sequence is not supported.", escapeOffset);
                 default:
                     throw ErrorAt($"Unsupported escape sequence '\\{escape}'.", escapeOffset);
             }
         }
     }
 
-    private char ReadUnicodeEscape(int escapeOffset)
+    /// <summary>Reads an eight-digit <c>\U</c> escape and turns it into one or two UTF-16 code units.</summary>
+    private string ReadCodePointEscape(int escapeOffset)
     {
-        if (_position + 4 > _text.Length) throw ErrorAt("Incomplete \\u escape sequence.", escapeOffset);
-
-        int value = 0;
-        for (int index = 0; index < 4; index++)
+        long codePoint = ReadHexEscape(8, escapeOffset, "\\U");
+        if (codePoint > 0x10FFFF || (codePoint >= 0xD800 && codePoint <= 0xDFFF))
         {
-            int digit = HexValue(_text[_position + index]);
-            if (digit < 0) throw ErrorAt("A \\u escape sequence requires four hexadecimal digits.", escapeOffset);
-            value = value * 16 + digit;
+            throw ErrorAt(
+                $"A \\U escape sequence requires a Unicode code point, but U+{codePoint:X8} is not one.",
+                escapeOffset);
         }
 
-        _position += 4;
-        return (char)value;
+        return char.ConvertFromUtf32((int)codePoint);
+    }
+
+    /// <summary>Reads a fixed number of hexadecimal digits as an unsigned value.</summary>
+    private long ReadHexEscape(int digits, int escapeOffset, string sequence)
+    {
+        if (_position + digits > _text.Length) throw ErrorAt($"Incomplete {sequence} escape sequence.", escapeOffset);
+
+        long value = 0;
+        for (int index = 0; index < digits; index++)
+        {
+            int digit = HexValue(_text[_position + index]);
+            if (digit < 0)
+            {
+                throw ErrorAt($"{sequence} requires {digits} hexadecimal digits.", escapeOffset);
+            }
+
+            value = (value * 16) + digit;
+        }
+
+        _position += digits;
+        return value;
     }
 
     internal static int HexValue(char value) => value switch

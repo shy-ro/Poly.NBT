@@ -13,6 +13,12 @@ namespace Poly.NBT.Snbt;
 /// The flag set is coarser than the snapshot timeline: a 25w04a dialect, which would accept heterogeneous
 /// lists but not the 25w09a numeric forms, cannot be expressed with the two presets provided.
 /// </para>
+/// <para>
+/// The string escape set is deliberately not one of these flags. Both presets recognize the same twelve
+/// escape sequences, because the writer emits escapes under both - a string containing a newline is written
+/// <c>"a\nb"</c> for <see cref="v1_13"/> as well - so gating them would make the writer's own output
+/// unreadable.
+/// </para>
 /// </remarks>
 public readonly record struct SnbtOptions
 {

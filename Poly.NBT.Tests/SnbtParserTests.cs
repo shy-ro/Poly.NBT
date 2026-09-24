@@ -119,6 +119,45 @@ public sealed class SnbtParserTests
     }
 
     [Fact]
+    public void ParsesEveryEscapeSequenceInBothQuoteStyles()
+    {
+        // The nine single-character escapes, in the grammar's order. A single-quoted string applies the same
+        // set as a double-quoted one, so \' and \" are both recognized in both.
+        const string allSimple = "\b\f\n\r \t\\'\"";
+        Assert.Equal(new NbtString(allSimple), SnbtParser.Parse("\"\\b\\f\\n\\r\\s\\t\\\\\\'\\\"\""));
+        Assert.Equal(new NbtString(allSimple), SnbtParser.Parse("'\\b\\f\\n\\r\\s\\t\\\\\\'\\\"'"));
+
+        // \x takes two hexadecimal digits, \u takes four, \U takes eight.
+        Assert.Equal(new NbtString("B"), SnbtParser.Parse("\"\\x42\""));
+        Assert.Equal(new NbtString("\u00ff"), SnbtParser.Parse("\"\\xff\""));
+        Assert.Equal(new NbtString("H"), SnbtParser.Parse("\"\\u0048\""));
+        Assert.Equal(new NbtString("\0"), SnbtParser.Parse("\"\\U00000000\""));
+        Assert.Equal(new NbtString("\uffff"), SnbtParser.Parse("\"\\U0000FFFF\""));
+
+        // A \U value outside the BMP becomes the surrogate pair UTF-16 needs, not a truncated character.
+        Assert.Equal(new NbtString("\ud83d\ude00"), SnbtParser.Parse("\"\\U0001F600\""));
+        Assert.Equal(2, Assert.IsType<NbtString>(SnbtParser.Parse("\"\\U0001F600\"")).Value.Length);
+    }
+
+    [Fact]
+    public void EscapedStringsSurviveAWriteAndReadCycle()
+    {
+        NbtString[] values =
+        [
+            new("\b\f\n\r \t\\'\""),
+            new("\u0000\u001b\ufffd"),
+            new("quote\"and'apostrophe"),
+            new("\ud83d\ude00"),
+        ];
+
+        foreach (NbtString value in values)
+        {
+            string text = SnbtWriter.Write(value);
+            Assert.Equal(value, SnbtParser.Parse(text));
+        }
+    }
+
+    [Fact]
     public void ParsesContainersAndPreservesKeyOrder()
     {
         const string text = "{name:Bananrama,Health:20b,nested:{a:1},list:[1,2]}";

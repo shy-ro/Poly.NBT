@@ -50,8 +50,20 @@ public sealed class SnbtErrorTests
     {
         Assert.Equal(0, Offset("\"abc"));
         Assert.Equal(2, Offset("\"a\\qb\""));
-        Assert.Equal(2, Offset("'a\\nb'"));
+        Assert.Equal(2, Offset("'a\\qb'"));
         Assert.Equal(1, Offset("\"\\u00zz\""));
+        Assert.Equal(1, Offset("\"\\x4\""));
+
+        // \U takes eight digits, not seven characters plus a quote.
+        Assert.Equal(1, Offset("\"\\U0001F60\""));
+
+        // ...and the value has to be a code point, which rules out everything above U+10FFFF and the
+        // surrogate range that UTF-16 uses for the code points above it.
+        Assert.Equal(1, Offset("\"\\U00110000\""));
+        Assert.Equal(1, Offset("\"\\U0000D800\""));
+
+        // The thirteenth escape of the grammar, refused by name.
+        Assert.Equal(1, Offset("\"\\N{Snowman}\""));
     }
 
     [Fact]

@@ -195,7 +195,24 @@ Minecraft 1.21.5; `v1_13` disables every one of them and `v1_21_5` enables every
 
 The parameterless parser and writer overloads use `SnbtOptions.v1_21_5`; there is deliberately no
 `default` preset. `NaN`/`Infinity` literals, the rejection of `i`/`I` integer suffixes, string-key
-compound rules, and typed-array suffix handling are dialect-independent.
+compound rules, typed-array suffix handling, and the string escape set are dialect-independent.
+
+#### String escapes
+
+Both quote styles accept the same twelve escape sequences. The grammar does not give single-quoted strings
+a smaller set, and the writer emits escapes in every dialect — a string containing a newline is written
+`"a\nb"` even for `v1_13` — so gating them by dialect would make the writer's own output unreadable.
+
+| Escape | Meaning |
+|:---|:---|
+| `\b` `\f` `\n` `\r` `\s` `\t` | Backspace, form feed, line feed, carriage return, space, tab |
+| `\\` `\'` `\"` | Backslash, single quote, double quote |
+| `\xhh` | Two hexadecimal digits, producing a single code unit in `U+0000`–`U+00FF` |
+| `\uhhhh` | Four hexadecimal digits, producing one UTF-16 code unit |
+| `\UHHHHHHHH` | Eight hexadecimal digits, producing a Unicode code point — a surrogate pair when it is above `U+FFFF` |
+
+`\N{name}` is the thirteenth escape and is **not** supported; see
+[Limitations](#limitations).
 
 #### Dialect effect on output
 
@@ -232,6 +249,7 @@ and parsing it back with `v1_13` fails.
 
 ## Limitations
 
+- **`\N{name}` is not supported.** SNBT defines thirteen string escapes; twelve are implemented in both quote styles, and the thirteenth indexes Unicode's name database (`\N{Snowman}`). A partial table would accept some names and silently reject others with no way for a caller to tell an unsupported name from a misspelled one, so it is refused with an error that names it. Twelve of thirteen is enough for every escape the game emits, since Minecraft does not write `\N{name}` either.
 - **`Utf8WithEscapes` literal escape ambiguity.** If a string contains the literal sequence `ESC x HH` (a `U+001B` character followed by `x` and two hex digits), the encoded form loses the `x` and hex digits on round-trip. This is a rare boundary; the fix would significantly increase complexity and is not planned.
 - **Asymmetric `long[]` deserialization.** When `OptimizePrimitiveListsToArrays` is `false`, `long[]` and `List<long>` still read `TAG_Long_Array` input. Deserialization is driven by the actual tag on the wire and is not constrained by the serializer's output configuration.
 

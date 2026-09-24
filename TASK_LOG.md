@@ -1,5 +1,59 @@
 # Task Log
 
+## 2026-09-25 - Implement the full SNBT string escape set
+
+### Scope
+
+Fix the audit's P1-3. The SNBT grammar lists thirteen string escapes; six were recognized in a double-quoted
+string and two in a single-quoted one, so SNBT written by Minecraft or by a person - notably `\s` for a space
+- failed to parse.
+
+| Escape | Double-quoted before | Single-quoted before | Now |
+|:---|:---:|:---:|:---:|
+| `\b` `\f` `\s` | missing | missing | both |
+| `\xhh` `\UHHHHHHHH` | missing | missing | both |
+| `\n` `\t` `\r` `\\` `\"` | present | missing | both |
+| `\'` | missing | present | both |
+| `\N{name}` | missing | missing | refused by name |
+
+### Actual Changes
+
+- `SnbtLexer.ReadQuotedString` now applies one table to both quote styles. The grammar does not give
+  single-quoted strings a smaller set, and `\s`, `\b` and `\f` are now decoded, as are `\xhh` (two hex digits)
+  and `\UHHHHHHHH` (eight).
+- The read-side quote branch is gone, so a single-quoted string no longer has a separate, smaller code path -
+  which is where the divergence came from in the first place.
+- `ReadUnicodeEscape` generalized to `ReadHexEscape(digits, ...)` and accumulating in `long`, because eight hex
+  digits do not fit in the `int` the old helper used; `\U` additionally validates the result as a code point,
+  rejecting anything above `U+10FFFF` and the surrogate range, then emits a surrogate pair via
+  `char.ConvertFromUtf32` when the value is outside the BMP.
+- `\N{name}` is refused by name with a dedicated message. A partial name table would be worse than none: it
+  would accept `\N{snowman}` and reject `\N{SNOWMAN}` with no way for a caller to tell an unsupported name
+  from a misspelled one. Minecraft does not write `\N{name}` either, so the practical loss is nil.
+- `SnbtErrorTests.ReportsStringErrors` gained the malformed `\x`, short `\U`, out-of-range `\U`, surrogate
+  `\U` and `\N{name}` cases; the case that asserted `'a\nb'` is invalid now asserts the same shape through a
+  genuinely unsupported escape (`'a\qb'`), since the escape set is no longer quote-dependent.
+- New `ParsesEveryEscapeSequenceInBothQuoteStyles` and `EscapedStringsSurviveAWriteAndReadCycle`.
+- README gained a "String escapes" table and a Limitations entry; `SnbtOptions` explains why the escape set is
+  not dialect-gated.
+
+### Verification
+
+- `dotnet build Poly.NBT.slnx --no-restore`: 0 warnings, 0 errors.
+- `dotnet test Poly.NBT.slnx --no-restore`: 193/193 passed (previously 191).
+- `dotnet format Poly.NBT.slnx --no-restore --verify-no-changes --severity warn`: passed.
+- Audit probe: all twelve escapes now decode in both quote styles, `\U0001F600` produces the two-code-unit
+  pair, and `\N{Snowman}` reports `SnbtParseException` at offset 1.
+
+### Known Issues and Next
+
+- The escape set stays dialect-independent on purpose. Escapes arrived with 25w09a, so a strict `v1_13` would
+  reject them - but the writer emits them under both dialects, so gating would make its own output unreadable.
+  `OutputRoundTripsUnderItsOwnDialect` pins that.
+- `\N{name}` remains the one unimplemented escape. Supporting it means shipping Unicode's name database; the
+  refusal is explicit so a caller sees a named limitation rather than a generic syntax error.
+- Next: the quote-selection rule (P1-6) and then the P2/P3 list.
+
 ## 2026-09-25 - Write floating-point literals in Java's shape
 
 ### Scope
