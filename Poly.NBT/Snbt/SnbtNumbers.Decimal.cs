@@ -260,9 +260,16 @@ internal static partial class SnbtNumbers
 
     private static bool IsNumberCandidate(ReadOnlySpan<char> token)
     {
-        char first = token[0];
-        if (IsAsciiDigit(first)) return true;
-        return first is '+' or '-' or '.' && token.Length > 1 && IsAsciiDigit(token[1]);
+        if (IsAsciiDigit(token[0])) return true;
+        if (token.Length < 2) return false;
+        if (token[0] is not ('+' or '-' or '.')) return false;
+        if (IsAsciiDigit(token[1])) return true;
+
+        // A sign may introduce a literal whose integer part is omitted entirely: '+.5' and '-.5' are floats.
+        // They have to be recognised here, or the token falls through to the bare-string branch and a float is
+        // silently read as a string. The omitted-part rules then accept or reject them, so a dialect without
+        // AllowOmittedFloatParts still refuses them with a message instead of returning text.
+        return token[0] is '+' or '-' && token.Length > 2 && token[1] == '.' && IsAsciiDigit(token[2]);
     }
 
     private static bool HasExponentBody(ReadOnlySpan<char> token, int index)

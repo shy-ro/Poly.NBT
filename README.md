@@ -208,6 +208,12 @@ The parameterless parser and writer overloads use `SnbtOptions.v1_21_5`; there i
 `default` preset. `NaN`/`Infinity` literals, the rejection of `i`/`I` integer suffixes, string-key
 compound rules, typed-array suffix handling, and the string escape set are dialect-independent.
 
+A number literal may begin with a sign, and — where `AllowOmittedFloatParts` permits it — the integer or
+fractional part may be left out entirely, so `+.5`, `-.5`, `-5.`, and `5.` are all numbers rather than
+strings. A token that begins with a sign or a point but is not a literal, such as `-foo` or `.foo`, is read
+as a bare string by the parser; the writer nevertheless quotes it, because Minecraft's tokenizer attempts a
+numeric parse first and reports an error instead of falling back.
+
 #### String escapes
 
 Both quote styles accept the same twelve escape sequences. The grammar does not give single-quoted strings

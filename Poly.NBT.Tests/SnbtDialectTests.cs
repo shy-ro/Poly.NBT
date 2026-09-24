@@ -44,8 +44,17 @@ public sealed class SnbtDialectTests
     {
         Assert.Equal(new NbtDouble(0.5), SnbtParser.Parse(".5", SnbtOptions.v1_21_5));
         Assert.Equal(new NbtDouble(5d), SnbtParser.Parse("5.", SnbtOptions.v1_21_5));
+
+        // A sign may introduce a literal with the integer part omitted entirely. It is still a number, not a
+        // string that happens to start with a sign.
+        Assert.Equal(new NbtDouble(0.5), SnbtParser.Parse("+.5", SnbtOptions.v1_21_5));
+        Assert.Equal(new NbtDouble(-0.5), SnbtParser.Parse("-.5", SnbtOptions.v1_21_5));
+        Assert.Equal(new NbtDouble(-5d), SnbtParser.Parse("-5.", SnbtOptions.v1_21_5));
+
         Assert.Throws<SnbtParseException>(() => SnbtParser.Parse(".5", SnbtOptions.v1_13));
         Assert.Throws<SnbtParseException>(() => SnbtParser.Parse("5.", SnbtOptions.v1_13));
+        Assert.Throws<SnbtParseException>(() => SnbtParser.Parse("+.5", SnbtOptions.v1_13));
+        Assert.Throws<SnbtParseException>(() => SnbtParser.Parse("-.5", SnbtOptions.v1_13));
     }
 
     [Fact]

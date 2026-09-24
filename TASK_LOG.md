@@ -1,5 +1,48 @@
 # Task Log
 
+## 2026-09-25 - Read a sign before an omitted integer part as a number
+
+### Scope
+
+Not an audit item. Found while adding the P3-1 tests: `+.5` and `-.5` are legal float literals, but
+`IsNumberCandidate` only accepted a sign followed by a *digit*, so `token[1] == '.'` failed the test and the
+token fell through to the bare-string branch of the value reader. A document containing `+.5` was therefore
+read as the string `"+.5"`, which is a wrong type rather than a rejection - the failure mode that is hardest
+to notice.
+
+The report's grammar table lists omitted integer and fractional parts as supported and matches the
+implementation, but it only exercises `.1` and `1.`; the signed forms are not covered. `.5` and `5.` work
+today because the point is followed by a digit, which is exactly what the check asked for.
+
+### Actual Changes
+
+- `IsNumberCandidate` now also accepts a sign followed by a point followed by a digit, so `+.5` and `-.5`
+  reach `ParseDecimal`. Everything downstream already handled them: the omitted-part rule decides whether the
+  dialect accepts them, and the normalizer added in the previous commit turns `-.5` into `-0.5`.
+- `OmittedFloatPartsAreDialectSpecific` gained `+.5` and `-.5` on both sides of the dialect gate: parsed as
+  `NbtDouble` under `v1_21_5`, refused with `SnbtParseException` under `v1_13`, matching `.5` and `5.`
+- `QuotesStringsThatStartWithASignOrPoint` gained `-.5` and `+.5`, because the writer has to keep quoting them
+  now that the reader treats them as numbers; without the quote the round trip would turn a string into a
+  double.
+- README's dialect section states the rule.
+
+### Verification
+
+- `dotnet build Poly.NBT.slnx --no-restore`: 0 warnings, 0 errors.
+- `dotnet test Poly.NBT.slnx --no-restore`: 206/206 passed. The two tests that changed are the ones above and
+  both gained assertions rather than losing any.
+- `dotnet format Poly.NBT.slnx --no-restore --verify-no-changes --severity warn`: passed.
+- The writer needed no code change: `CanWriteBare` already rejects a leading sign or point before it consults
+  the parser, so the quoting decision does not depend on this fix.
+
+### Known Issues and Next
+
+- `-foo` and `.foo` still read as bare strings, which is intentional: they are not literals, so the parser
+  recovers the way it always has. Only text that *is* a literal changed meaning.
+- The remaining P3 items are untouched: the unconditional `StringBuilder` in `ReadQuotedString`, the
+  null-constructible DOM payloads, a missing `.editorconfig`, package metadata and the `Implemented/Planned`
+  table, an AOT smoke project, and the tracked `TASK_LOG.md` decision.
+
 ## 2026-09-25 - Drop the temporaries and the linear scan from number parsing
 
 ### Scope

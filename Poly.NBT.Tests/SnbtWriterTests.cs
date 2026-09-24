@@ -87,6 +87,11 @@ public sealed class SnbtWriterTests
         Assert.Equal("\"+foo\"", SnbtWriter.Write(new NbtString("+foo")));
         Assert.Equal("\".foo\"", SnbtWriter.Write(new NbtString(".foo")));
         Assert.Equal("\"-1.5\"", SnbtWriter.Write(new NbtString("-1.5")));
+
+        // These read as numbers now, so the quote is what keeps the round trip a string.
+        Assert.Equal("\"-.5\"", SnbtWriter.Write(new NbtString("-.5")));
+        Assert.Equal("\"+.5\"", SnbtWriter.Write(new NbtString("+.5")));
+
         Assert.Equal("a-b", SnbtWriter.Write(new NbtString("a-b")));
         Assert.Equal("a+b", SnbtWriter.Write(new NbtString("a+b")));
         Assert.Equal("a.b", SnbtWriter.Write(new NbtString("a.b")));
